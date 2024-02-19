@@ -11,5 +11,5 @@ Current projects ongoing are:
 
     -Feedback into dual wavelength laser  
 
-    - Coherent receiver
+    -Coherent receiver
 
