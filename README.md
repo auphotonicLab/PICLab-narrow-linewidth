@@ -1,4 +1,4 @@
-# PICLab_narrow_linewidth
+# PICLab-narrow-linewidth
 PICLab control and data analysis scripts
 
 A place for the PIC Lab control script used for projects regarding narrow linewidth lasers.
