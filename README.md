@@ -13,3 +13,10 @@ Current projects ongoing are:
 
     -Coherent receiver
 
+To avoid conflicts create a new branch by
+    "git checkout -b branch_name" 
+    or navigate to home page of repository, click "<n> branches", and click "New Branch".
+
+This creates a new branch, which can be uploaded via a "Pull request" and then merged to the main branch.
+
+This is in order to keep the main branch clean and functioning.
