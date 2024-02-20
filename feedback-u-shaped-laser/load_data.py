@@ -28,4 +28,4 @@ def get_all_data(directory):
     files = os.listdir(directory)
     def path(file):
         return directory + '\\' + file
-    return path(files)
+    return [path(file) for file in files]
