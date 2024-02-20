@@ -7,6 +7,11 @@
 import math
 import numpy as np
 
+def gauss_log(x,a,b):
+    return -0.5*(x/a)**2 + b
+
+def lor_log(x,a,df):
+    return a + 10*np.log10(df/(df**2 + x**2))
 
 def del_o(del_f):
     return 2*np.pi*del_f
@@ -31,7 +36,7 @@ def Lor_dB(x,a,df):
 
 def PSD_real_laser_dB(omega, A, del_f, freq_center, a1):
 
-    return 10*np.log10(A * math.exp(- (freq_center-omega)**2/(4*a1)) * np.real(math.exp(j*np.pi* (freq_center-omega)*del_f/(2*a1))*math.erfc( (np.pi*del_f + j*(freq_center-omega))/ (2*np.sqrt(a1)) ) ) )
+    return 10*np.log10(A * math.exp(- (freq_center-omega)**2/(4*a1)) * np.real(math.exp(1j*np.pi* (freq_center-omega)*del_f/(2*a1))*math.erfc( (np.pi*del_f + 1j*(freq_center-omega))/ (2*np.sqrt(a1)) ) ) )
 
 def del_o(del_f):
     return 2*np.pi*del_f
