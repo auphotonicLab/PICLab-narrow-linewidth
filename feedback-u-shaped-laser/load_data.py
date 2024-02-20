@@ -17,7 +17,7 @@ def get_data_from_folder(directory):
     files = os.listdir(directory)
     def path(file):
         return directory + '\\' + file
-    return ([path(files[1]), path(files[3])], [path(files[5]), path(files[7])], [path(files[8])])
+    return ([path(files[1]), path(files[3])], [path(files[5]), path(files[7])])
 
 def plot_spectrum(freqs,powers,label=''):
     plt.plot(freqs,powers,label=label)
