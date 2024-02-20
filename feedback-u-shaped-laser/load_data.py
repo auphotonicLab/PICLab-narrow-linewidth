@@ -23,3 +23,9 @@ def plot_spectrum(freqs,powers,label=''):
     plt.plot(freqs,powers,label=label)
     plt.xlabel('Fourier frequency [MHz]')
     plt.ylabel('ESA power [dBm]')
+
+def get_all_data(directory):
+    files = os.listdir(directory)
+    def path(file):
+        return directory + '\\' + file
+    return path(files)
