@@ -7,14 +7,21 @@ import load_data as ld
 import fit_functions as ff
 from scipy.optimize import curve_fit
 
-def get_full_spectrum_from_folder(directory,k=1):
-    esa_full, esa_close, osa = ld.get_data_from_folder(directory)
-    fs, ps = get_subtracted_background(esa_full[1], esa_full[0],k)
+def get_full_spectrum_from_folder(directory,k=1,plot=False,center_about_carrier=False):
+    esa_full, esa_close = ld.get_data_from_folder(directory)
+    fs, ps = get_subtracted_background(esa_full[1], esa_full[0],k,plot,center_about_carrier)
     return fs, ps
 
-def get_close_spectrum_from_folder(directory,k=1):
-    esa_full, esa_close, osa = ld.get_data_from_folder(directory)
-    fs, ps = get_subtracted_background(esa_close[1], esa_close[0],k)
+def get_close_spectrum_from_folder(directory,k=1,plot=False,center_about_carrier=False):
+    esa_full, esa_close = ld.get_data_from_folder(directory)
+    fs, ps = get_subtracted_background(esa_close[1], esa_close[0],k,plot,center_about_carrier)
+    return fs, ps
+
+def get_full_background(directory,k=1,plot=False):
+    esa_full, esa_close = ld.get_data_from_folder(directory)
+    fs, ps = ld.get_esa_data(esa_full[0])
+    if plot:
+        ld.plot_spectrum(fs,ps)
     return fs, ps
 
 def fit_profile(fs, ps, threshold_close, threshold_mid, threshold_far):
@@ -45,7 +52,7 @@ def fit_profile(fs, ps, threshold_close, threshold_mid, threshold_far):
     return fwhm1,fwhm2
 
 def fit_profile_from_folder(directory, threshold_close, threshold_mid, threshold_far):
-    esa_full, esa_close, osa = ld.get_data_from_folder(directory)
+    esa_full, esa_close = ld.get_data_from_folder(directory)
     fs, ps = get_subtracted_background(esa_close[1], esa_close[0],plot=False, center_about_carrier=True)
     fwhm1, fwhm2 = fit_profile(fs, ps, threshold_close, threshold_mid, threshold_far)
     return fwhm1, fwhm2 
