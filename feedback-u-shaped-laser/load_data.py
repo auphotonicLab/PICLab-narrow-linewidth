@@ -4,13 +4,17 @@ import matplotlib.pyplot as plt
 
 #Functions for loading and plotting raw data
 
-def get_esa_data(path):
+def get_esa_data(path,plot=False,center_about_carrier=False):
     #Returns:
     #freqs: frequency axis in MHz
     #powers: ESA power in dBm 
     data = np.loadtxt(path)
     freqs = data[0,:]*1e-6
+    if center_about_carrier:
+        freqs = freqs - 80
     powers = data[1,:]
+    if plot:
+        plot_spectrum(freqs,powers)
     return freqs, powers
 
 def get_data_from_folder(directory):

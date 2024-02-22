@@ -11,6 +11,7 @@ import matplotlib.animation as animation
 
 #%%
 data_dir = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\Measurements_2024-02-18"
+path_coherent = r"C:\Users\au622616\OneDrive - Aarhus universitet\U shaped measurements\ESA_spectrum_Feedback measurement.txt"
 dirs = ld.get_all_data(data_dir)
 
 # %%
@@ -36,4 +37,6 @@ writer = animation.PillowWriter(fps=5, metadata=dict(artist='Me'), bitrate=1800)
 ani.save('scatter.gif', writer=writer)
 # %%
 _,_ = dp.get_full_background(dirs[25],plot=True)
+# %%
+fs, ps = ld.get_esa_data(path_coherent)
 # %%
