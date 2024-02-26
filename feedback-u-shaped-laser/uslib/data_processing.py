@@ -10,6 +10,7 @@ from scipy.optimize import curve_fit
 class data_processing:
         
     def __init__(self):
+        pass
     
     def get_full_spectrum_from_folder(directory,k=1,plot=False,center_about_carrier=False):
         esa_full, esa_close = ld.get_data_from_folder(directory)
