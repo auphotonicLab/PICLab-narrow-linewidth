@@ -11,6 +11,7 @@ import numpy as np
 class fit_functions:
         
     def __init__(self):
+        pass
         
     def gauss_log(x,a,b):
         return -0.5*(x/a)**2 + b

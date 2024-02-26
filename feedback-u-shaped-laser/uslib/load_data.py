@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 class load_data:
         
     def __init__(self):
+        pass
 
     def get_esa_data(path,plot=False,center_about_carrier=False):
         #Returns:
