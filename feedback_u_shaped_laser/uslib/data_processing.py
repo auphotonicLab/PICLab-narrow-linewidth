@@ -4,15 +4,15 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from .load_data import LoadData
-from .fit_functions import fit_functions
+from .fit_functions import FitFunctions
 from scipy.optimize import curve_fit
 
-class data_processing(object):
+class DataProcessing(object):
         
     def __init__(self):
         
         self.ld = LoadData()
-        self.ff = fit_functions()
+        self.ff = FitFunctions()
 
     
     def get_full_spectrum_from_folder(self, directory,k=1,plot=False,center_about_carrier=False):

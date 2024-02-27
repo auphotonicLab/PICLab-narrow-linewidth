@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 
-class fit_functions(object):
+class FitFunctions(object):
         
     def __init__(self):
         pass
