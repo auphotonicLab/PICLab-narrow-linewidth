@@ -87,3 +87,13 @@ class DataProcessing(object):
             freqs_new = freqs_new - 80
             powers_new = powers_new - max(powers_new)
         return freqs_new, powers_new
+    
+
+
+    def feedback_ratio(self,LaserPWR,FeedbackPWR,Laser_ref, Laser_power_coef = 1/40, coupling_ref = 0.4, Feedback_coef = 1): 
+        '''The calculation of the feedback ratio using Simon's derivation. 
+        It assumes initially an coupling of 0.4 between the laser and the fiber. 
+        The arguments could be taken from the header of each measurement (see ld.extract_meas_params method)
+        Laser_power_coef and Feedback_coef depends on the setup, as it is the amount of splitting done before the power meters. 
+        '''
+        return 10*np.log10(coupling_ref**2 * LaserPWR*FeedbackPWR*Laser_power_coef*Feedback_coef/Laser_ref**2)
