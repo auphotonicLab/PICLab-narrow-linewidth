@@ -51,27 +51,31 @@ class FitFunctions(object):
         
         return self.del_o(del_f) * ( 1-math.exp(-t_d*self.del_o(del_f)) * (np.cos(Omega*t_d) + self.del_o(del_f)/Omega * np.sin(Omega*t_d)) ) / ( self.del_o(del_f)**2 + Omega**2)
 
-def zeta_zero(self, del_f,t_d):
-    return ( 1-math.exp(-t_d*self.del_o(del_f)) * (1 + self.del_o(del_f)*t_d ) ) / self.del_o(del_f)
+    def zeta_zero(self, del_f,t_d):
+        return ( 1-math.exp(-t_d*self.del_o(del_f)) * (1 + self.del_o(del_f)*t_d ) ) / self.del_o(del_f)
 
 
-def f_minus(self, f,freq_shift):
-    return f - freq_shift
+    def f_minus(self, f,freq_shift):
+        return f - freq_shift
 
-def q_func(self, A_1,A_2):
-    return (1+(A_2/A_1)**2)/(2*A_2/A_1) #A_1 amplitude of field going through time delay, A_2 amplitude of field going through EOM
+    def q_func(self, A_1,A_2):
+        return (1+(A_2/A_1)**2)/(2*A_2/A_1) #A_1 amplitude of field going through time delay, A_2 amplitude of field going through EOM
 
-def dirac_delta(self, x,limit):
-    
-    return np.piecewise(x,[np.abs(x) <= limit/2, np.abs(x) > limit/2],[1/limit,0] )
+    def dirac_delta(self, x,limit):
+        
+        return np.piecewise(x,[np.abs(x) <= limit/2, np.abs(x) > limit/2],[1/limit,0] )
 
 
-def DSH_ideal_PSD(self, f,freq_shift,del_f,t_d,limit):
+    def DSH_ideal_PSD(self, f,freq_shift,del_f,t_d,limit):
 
-    return 2*(self.zeta_func(f_minus(f,freq_shift),del_f,t_d) + np.pi*math.exp(-t_d*self.del_o(del_f))*dirac_delta(2*np.pi*f_minus(f,freq_shift),limit) + 4*np.pi*q_func(1,1)*dirac_delta(2*np.pi*f,limit) )
+        return 2*(self.zeta_func(self.f_minus(f,freq_shift),del_f,t_d) + np.pi*math.exp(-t_d*self.del_o(del_f))*self.dirac_delta(2*np.pi*self.f_minus(f,freq_shift),limit) + 4*np.pi*self.q_func(1,1)*self.dirac_delta(2*np.pi*f,limit) )
 
-def Gaussian_dB(self, x,A,freq_center,var):
-    return 10*np.log10 (A/np.sqrt(2*np.pi*var) * math.exp(- (x-freq_center)**2 /(2*var) ) ) #var is the square of the standard deviation
+    def Gaussian_dB(self, x,A,freq_center,var):
+        return 10*np.log10 (A/np.sqrt(2*np.pi*var) * math.exp(- (x-freq_center)**2 /(2*var) ) ) #var is the square of the standard deviation
 
-def Gauss_dB(self, x,a,b):
-    return a - b*x**2
+    def Gauss_dB(self, x,a,b):
+        return a - b*x**2
+
+    def zeta_fit(self, freq, linewidth, offset, length):
+
+        return 10*np.log10(self.zeta_func(freq,linewidth,self.time_delay(length)))+offset
