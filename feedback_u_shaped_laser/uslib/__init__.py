@@ -1,7 +1,5 @@
-'''from uslib import load_data
-import fit_functions
-import data_processing
+from uslib import load_data, fit_functions, data_processing
 
 ld = load_data.LoadData()
-ff = fit_functions.fit_functions()
-dp = data_processing.data_processing()'''
+ff = fit_functions.FitFunctions()
+dp = data_processing.DataProcessing()
