@@ -18,7 +18,7 @@ class FitFunctions(object):
         pass
         
     def gauss_log(self, x,a,b):
-        """This is a guassian in log scale"""
+        """This is a gaussian in log scale"""
         return -0.5*(x/a)**2 + b
     
     def lor_log(self, x,a,df):
