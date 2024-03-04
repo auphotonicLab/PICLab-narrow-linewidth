@@ -9,10 +9,18 @@ class LoadData(object):
     def __init__(self):
         pass
 
-    def get_esa_data(self, path ,plot=False,center_about_carrier=False):
-        #Returns:
-        #freqs: frequency axis in MHz
-        #powers: ESA power in dBm 
+    def get_esa_data(self, path: str ,plot=False,center_about_carrier=False):
+        """Returns esa data from a txt file path
+
+        Args:
+            path (str): Path of data file
+            plot (bool, optional): Plots data if True. Defaults to False.
+            center_about_carrier (bool, optional): Centers data about the EOM modulation frequency (80 MHz) if true. Defaults to False.
+
+        Returns:
+            freqs: array of ESA frequencies
+            powers: array of ESA powers
+        """
         data = np.loadtxt(path)
         freqs = data[0,:]*1e-6
         if center_about_carrier:
@@ -22,18 +30,43 @@ class LoadData(object):
             self.plot_spectrum(freqs,powers)
         return freqs, powers
     
-    def get_data_from_folder(self, directory):
+    def get_single_measurement_paths(self, directory: str):
+        """Gets all paths within a single measurement folder, sorted into arrays of ESA data.
+
+        Args:
+            directory (str): Single measurement folder path
+
+        Returns:
+            Tuple: Contains 2 elements: (full ESA spectra, close ESA spectra)
+            - Each of these contain paths for: [background (EOM off), signal (EOM on)]
+            ( [full background, full signal], [close background, close signal] ) 
+        """
         files = os.listdir(directory)
         def path(file):
             return directory + '\\' + file
         return ([path(files[1]), path(files[3])], [path(files[5]), path(files[7])])
     
     def plot_spectrum(self, freqs,powers,label=''):
+        """Plots an ESA spectrum from data
+
+        Args:
+            freqs (array): ESA frequencies
+            powers (array): ESA powers
+            label (str, optional): Plot label. Defaults to empty string.
+        """
         plt.plot(freqs,powers,label=label)
         plt.xlabel('Fourier frequency [MHz]')
         plt.ylabel('ESA power [dBm]')
     
     def get_all_data(self, directory):
+        """Used to get paths for all single measurement in a given lab session
+
+        Args:
+            directory (str): directory path for a measurement session
+
+        Returns:
+            Array containing paths for all single measurements
+        """
         files = os.listdir(directory)
         def path(file):
             return directory + '\\' + file
