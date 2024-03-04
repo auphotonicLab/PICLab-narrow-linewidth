@@ -19,6 +19,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
 
 
 [project.urls]
