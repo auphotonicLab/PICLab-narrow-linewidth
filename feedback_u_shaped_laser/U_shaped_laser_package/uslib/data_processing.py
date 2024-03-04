@@ -1,6 +1,5 @@
 #Functions that has to do with post processing of data
 
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from .load_data import LoadData
