@@ -1,0 +1,1 @@
+A package where all classes and methods used in data analysis and plots are stored.
