@@ -88,8 +88,13 @@ class LoadData(object):
                 if value[j].isdigit():
                     last_placement = j+1
                     break
+            
+            try:
+                float_value = float(value[first_placement:last_placement]) #Obtaining the full number and turning it into a float
 
-            float_value = float(value[first_placement:last_placement]) #Obtaining the full number and turning it into a float
+            except ValueError:
+                float_value = value
+                print('The value for' + key + 'is not a float')
 
             params_dict[key] = float_value #Saving the key and value in the dictionary
 
