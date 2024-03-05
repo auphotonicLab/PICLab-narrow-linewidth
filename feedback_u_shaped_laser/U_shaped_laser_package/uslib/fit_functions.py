@@ -9,11 +9,16 @@ import numpy as np
 
 
 class FitFunctions(object):
+
+    r""" 
+    Test if anything happens
+    """
         
     def __init__(self):
         pass
         
     def gauss_log(self, x,a,b):
+        """This is a gaussian in log scale"""
         return -0.5*(x/a)**2 + b
     
     def lor_log(self, x,a,df):
@@ -79,3 +84,6 @@ class FitFunctions(object):
     def zeta_fit(self, freq, linewidth, offset, length):
 
         return 10*np.log10(self.zeta_func(freq,linewidth,self.time_delay(length)))+offset
+    
+    def R_squared(data,fitfunc_evaluated): #Goodness of fit
+     return 1-(((data-fitfunc_evaluated))**2).sum() / ((data-data.mean())**2).sum()
