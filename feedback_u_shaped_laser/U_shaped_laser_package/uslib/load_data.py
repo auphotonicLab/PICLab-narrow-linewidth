@@ -1,100 +1,164 @@
+"""Functions for loading and plotting raw data"""
+
+#This party imports
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
-#Functions for loading and plotting raw data
+#First party imports
+import uslib.fit_functions as ff
 
-class LoadData(object):
-        
-    def __init__(self):
-        pass
+class DshSpectrum:
+    """Class representing a DSH spectrum
+    """
 
-    def get_esa_data(self, path: str ,plot=False,center_about_carrier=False):
-        """Returns esa data from a txt file path
+    def __init__(self, path, path_bg=None, center = 0) -> None:
+        """Makes instance of a DSH spectrum.
+        It is possible to pass two spectra where the
+        second spectrum is treated as a background spectrum
+        which is subtracted from the first.
+
+        Parameters
+        ----------
+        path : str
+            Path to DSH spectrum
+        path_bg : str, optional
+            Path to background spectrum, by default None
+        center : int, optional
+            Shift of the frequency axis in MHz.
+            Set this to the value of the EOM modulation frequency
+            (typically 80 MHz) to center the spectrum about 0. 
+            Set to 0 by default
+        """
+        if path_bg is None:
+            fs, ps = self.get_data(path)
+            params = self.extract_meas_params(path)
+            self.freqs = fs - center
+            self.powers = ps
+            self.powers_lin = 10**(ps/10)
+            self.power_max = max(ps)
+            self.params = params
+            self.center = center
+        else:
+            signal = DshSpectrum(path,center=center)
+            background = DshSpectrum(path_bg,center=center)
+            powers_difference_lin = abs(signal.powers_lin - background.powers_lin)
+            powers_difference_log = 10*np.log10(powers_difference_lin)
+            self.signal = signal
+            self.background = background
+            self.freqs = signal.freqs
+            self.powers = powers_difference_log
+            self.powers_lin = powers_difference_lin
+            self.power_max = max(self.powers)
+            self.params = signal.params
+            self.center = center
+
+    def set_center(self, new_center):
+        """Change value of center
+
+        Parameters
+        ----------
+        new_center : float
+            New center value 
+        """
+        self.center = new_center
+
+    def get_data(self, path):
+        """Returns esa data from file path. This function works on data from
+        O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips\\Chip 3 Feedback measurements
+        from 2024-02-18 and onwards
+
+        Example of valid file path:
+
+        O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips\\Chip 3 Feedback measurements
+        \\Measurements_2024-02-22\\2024-02-22_12-01-21single_measurement_
+        \\2024-02-22_12-01-21_ESA_full_spectrum_, EOM off,feedback_-47.58 dB.txt
 
         Args:
             path (str): Path of data file
-            plot (bool, optional): Plots data if True. Defaults to False.
-            center_about_carrier (bool, optional): Centers data about the EOM modulation frequency (80 MHz) if true. Defaults to False.
-
         Returns:
             freqs: array of ESA frequencies
-            powers: array of ESA powers
+            powers: array of ESA powers in dBm
         """
+
         data = np.loadtxt(path)
         freqs = data[0,:]*1e-6
-        if center_about_carrier:
-            freqs = freqs - 80
         powers = data[1,:]
-        if plot:
-            self.plot_spectrum(freqs,powers)
         return freqs, powers
-    
-    def get_single_measurement_paths(self, directory: str):
-        """Gets all paths within a single measurement folder, sorted into arrays of ESA data.
 
+    def plot(self, label=''):
+        """Plot DSH spectrum
         Args:
-            directory (str): Single measurement folder path
-
-        Returns:
-            Tuple: Contains 2 elements: (full ESA spectra, close ESA spectra)
-            - Each of these contain paths for: [background (EOM off), signal (EOM on)]
-            ( [full background, full signal], [close background, close signal] ) 
-        """
-        files = os.listdir(directory)
-        def path(file):
-            return directory + '\\' + file
-        return ([path(files[1]), path(files[3])], [path(files[5]), path(files[7])])
-    
-    def plot_spectrum(self, freqs,powers,label=''):
-        """Plots an ESA spectrum from data
-
-        Args:
-            freqs (array): ESA frequencies
-            powers (array): ESA powers
             label (str, optional): Plot label. Defaults to empty string.
         """
-        plt.plot(freqs,powers,label=label)
+        plt.plot(self.freqs,self.powers,label=label)
         plt.xlabel('Fourier frequency [MHz]')
         plt.ylabel('ESA power [dBm]')
-    
-    def get_all_data(self, directory):
-        """Used to get paths for all single measurement in a given lab session
+
+    def fit_profile(self, threshold_close: float,
+            threshold_mid: float, threshold_far: float, plot = True):
+        """Fits DSH spectrum to a Gaussian about the center and a Lorentzian to the tails 
+        and extracts the FWHM from both
 
         Args:
-            directory (str): directory path for a measurement session
+            fs: Fourier freqencies, assumed to be centered about profile.
+            If this is not the case, set center = EOM modulation frequency
+            in __init__ or use the set_center() class method.
+            ps: ESA powers
+            threshold_close (float): Maximum value from the center to make a Gaussian fit
+            threshold_mid (float): Minimum value from the center to make a Lorentzian fit
+            threshold_far (float): Maximum value from the center to make a Lorentzian fit
+            plot (bool, optional): Plots data and fit. Defauls to True
 
         Returns:
-            Array containing paths for all single measurements
+            Gaussian FWHM, Lorentzian FWHM
         """
-        files = os.listdir(directory)
-        def path(file):
-            return directory + '\\' + file
-        return [path(file) for file in files]
+        fs = self.freqs
+        ps = self.powers - self.power_max
 
-    def extract_meas_params(self, directory):
+        filter_close = abs(fs) < threshold_close
+        filter_far = (abs(fs) > threshold_mid) &  (abs(fs) < threshold_far)
+
+        params_close,*_ = curve_fit(ff.gauss_log,fs[filter_close],ps[filter_close])
+        params_far,*_ = curve_fit(ff.lor_log,fs[filter_far],ps[filter_far])
+
+        fwhm1 = abs(params_close[0])*2*np.sqrt(2*np.log(2))*np.sqrt(10/np.log(10))
+        fwhm2 = 2*abs(params_far[1])
+
+        if plot:
+            plt.plot(fs,ps)
+            plt.plot(fs,ff.gauss_log(fs,*params_close),label = 'Gaussian fit')
+            plt.plot(fs,ff.lor_log(fs,*params_far),label= 'Lorentzian fit')
+            plt.xlim([-4,4])
+            plt.ylim([-40,5])
+            plt.ylabel('DSH power [dBc]')
+            plt.xlabel('Carrier detuning [MHz]')
+            plt.legend()
+        return fwhm1, fwhm2
+
+    def extract_meas_params(self, path):
 
         '''
-        A method to extract the measurement parameters used for a given measurement. The information is taken from the dataset where the EOM is turned on and the range is set for the peak.
-
-        Argument: directory
+        A method to extract the measurement parameters used for a given spectrum.
+        Argument: path
             Type: str
-                    A path to a folder from which the measurement information is taken from
-                
+                    File path                
         Returns: params_dict
             Type: dict
-                    A dictionary containing all the information saved in the header of the EOM on, peak range .txt file.
+                    A dictionary containing all the information saved in the header
+                    of the EOM on, peak range .txt file.
                     The units used are most likely: meters, watts, volts, dB, MHz
-        
         '''
 
-        data = open(self.get_data_from_folder(directory)[1][1]) #This corresponds to the measurement taken for the peak range with the EOM on 
+        with open(path,encoding="utf8") as data:
 
-        header = data.readline().strip().replace('# ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=') #Making sure that all the information is in the same format
-        header2 = data.readline().strip().replace('#  ','').replace('# ','').replace('Parameters: ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=')
+            #Making sure that all the information is in the same format
+            header = data.readline().strip().replace('# ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=')
+            header2 = data.readline().strip().replace('#  ','').replace('# ','').replace('Parameters: ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=')
 
-
-        header_final = [i for i in header.split(',') if i] #Making sure that no empty values are included
+        #Making sure that no empty values are included
+        header_final = [i for i in header.split(',') if i]
 
         header2_final = [i for i in header2.split(',') if i]
 
@@ -102,33 +166,89 @@ class LoadData(object):
 
 
         params_dict = {}
+        #Creating the dictionary
+        for parameter_string in all_params_list:
 
-        for parameter_string in all_params_list: #Creating the dictionary
-            
             param_list = parameter_string.split('=')
 
             key = param_list[0]
             value = param_list[1]
-
-            for j in range(len(value)): #Finding the first digit of the float in the value part of the string
-
-                if value[j].isdigit() or value[j]=='-':
+            #Finding the first digit of the float in the value part of the string
+            for j, val in enumerate(value):
+                if val.isdigit() or val=='-':
                     first_placement = j
                     break
-
-            for j in range(len(value)-1,-1,-1): #Finding the last digit of the float in the value part of the string
+            #Finding the last digit of the float in the value part of the string
+            for j in range(len(value)-1,-1,-1):
 
                 if value[j].isdigit():
                     last_placement = j+1
                     break
-            
+            #Obtaining the full number and turning it into a float
             try:
-                float_value = float(value[first_placement:last_placement]) #Obtaining the full number and turning it into a float
+                float_value = float(value[first_placement:last_placement])
 
             except ValueError:
                 float_value = value
                 print('The value for' + key + 'is not a float')
-
-            params_dict[key] = float_value #Saving the key and value in the dictionary
+            #Saving the key and value in the dictionary
+            params_dict[key] = float_value
 
         return params_dict
+
+#UPDATED VERSION OF GET_SINGLE_MEASUREMENT_PATHS
+def get_single_measurement(directory: str):
+    """Updated version of get_single_measurement_paths
+    Gets background subtracted DshSpectrum classes
+    in full (160 MHz typ.) span and close (10/20 MHz tpy.) span.
+
+    Args:
+        directory (str): Single measurement folder path.
+        Example directory:
+        "O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips
+        \\Chip 3 Feedback measurements\\Measurements_2024-02-22
+        \\2024-02-22_12-01-21single_measurement_"
+
+
+    Returns:
+        [Full span, close span]
+    """
+    files = os.listdir(directory)
+    def path(file):
+        return directory + '\\' + file
+    dsh_full = DshSpectrum(path(files[3]),path(files[1]))
+    dsh_close = DshSpectrum(path(files[7]),path(files[5]),center=80)
+    return dsh_full, dsh_close
+
+#UPDATED VERSION OF GET_ALL_DATA
+def get_lab_session_data(directory):
+    """Used to get paths for all single measurements in a given lab session
+
+    Args:
+        directory (str): directory path for a measurement session.
+        Example directory:
+        "O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips
+        \\Chip 3 Feedback measurements\\Measurements_2024-02-22"
+
+    Returns:
+        Array containing paths for all single measurements
+    """
+    files = os.listdir(directory)
+    def path(file):
+        return directory + '\\' + file
+    data = [get_single_measurement(path(file)) for file in files]
+    return data
+
+#MOVED FROM DATA_PROCESSING MODULE
+def feedback_ratio(self,laser_power,feedback_power,laser_ref,
+                    laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1):
+    '''The calculation of the feedback ratio using Simon's derivation.
+    It assumes initially an coupling of 0.4 between the laser and the fiber.
+    The arguments could be taken from the header of each measurement
+    (see ld.extract_meas_params method)
+    laser_power_coef and feedback_coef depends on the setup,
+    as it is the amount of splitting done before the power meters.
+    '''
+    return 10*np.log10(coupling_ref**2
+                        * laser_power*feedback_power*laser_power_coef*
+                        feedback_coef/laser_ref**2)
