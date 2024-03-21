@@ -1,6 +1,6 @@
 """Functions for loading and plotting raw data"""
 
-#This party imports
+#Third party imports
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -200,7 +200,8 @@ class DshSpectrum:
 def get_single_measurement(directory: str):
     """Updated version of get_single_measurement_paths
     Gets background subtracted DshSpectrum classes
-    in full (160 MHz typ.) span and close (10/20 MHz tpy.) span.
+    in full (160 MHz typ.) span and close (10/20 MHz tpy.) span
+    as well as OSA spectrum if present
 
     Args:
         directory (str): Single measurement folder path.
@@ -211,14 +212,48 @@ def get_single_measurement(directory: str):
 
 
     Returns:
-        [Full span, close span]
+        dsh_full: instance of DshSpectrum
+            DSH spectrum of the full span
+        dsh_close: instance of DshSpectrum
+            DSH spectrum of the close span
+        osa : instance of OsaSpectrum
+            Full span OSA spectrum
     """
+    #THERE SHOULD BE A SIMPLER IMPLEMENTATION OF THIS METHOD
     files = os.listdir(directory)
+
     def path(file):
         return directory + '\\' + file
-    dsh_full = DshSpectrum(path(files[3]),path(files[1]))
-    dsh_close = DshSpectrum(path(files[7]),path(files[5]),center=80)
-    return dsh_full, dsh_close
+    
+    #Sort out png files
+    txt_files = [file for file in files if file.endswith('.txt')]
+    
+    #Placeholders for the different paths
+    path_full_bg = None
+    path_full_signal = None
+    path_close_bg = None
+    path_close_signal = None
+    path_osa = None
+
+    for txt_file in txt_files:
+        if "ESA_full_spectrum_, EOM off" in txt_file:
+            path_full_bg = path(txt_file)
+        if "ESA_full_spectrum_, EOM on" in txt_file:
+            path_full_signal = path(txt_file)
+        if "ESA_peak_spectrum_, EOM off" in txt_file:
+            path_close_bg = path(txt_file)
+        if "ESA_peak_spectrum_, EOM on" in txt_file:
+            path_close_signal = path(txt_file)
+        if "OSA_full_spectrum" in txt_file:
+            path_osa = path(txt_file)
+
+    dsh_full = DshSpectrum(path_full_signal,path_full_bg)
+
+    #Centering these spectra about the modulation frequency
+    dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
+    osa = OsaSpectrum(path_osa)
+
+    return dsh_full, dsh_close, osa
 
 #UPDATED VERSION OF GET_ALL_DATA
 def get_lab_session_data(directory):
@@ -252,3 +287,54 @@ def feedback_ratio(self,laser_power,feedback_power,laser_ref,
     return 10*np.log10(coupling_ref**2
                         * laser_power*feedback_power*laser_power_coef*
                         feedback_coef/laser_ref**2)
+
+class OsaSpectrum:
+    """Class representing an OSA spectrum
+    """
+
+    def __init__(self, path) -> None:
+        """Makes instance of an OSA spectrum.
+
+        Parameters
+        ----------
+        path : str
+            Path to the OSA spectrum 
+        """
+        wav, ps = self.get_data(path)
+        
+        self.wavelengths = wav
+        self.powers = ps
+        self.peak_power = max(ps)
+        
+        #THERE SHOULD BE A SIMPLER IMPLEMENTATION OF THIS
+        self.peak_wavelength = wav[np.where(ps == max(ps))[0][0]]
+
+    def get_data(self, path):
+        """Returns OSA data from file path
+
+        Parameters
+        ----------
+        path : str
+            path to OSA spectrum
+
+        Returns
+        -------
+        wav : numpy.ndarray
+            array of wavelengths
+        ps : numpy.ndarray
+            array of powers
+        """
+        df = np.loadtxt(path)
+
+        wav = df[0,:]*1e9
+        ps = df[1,:]
+
+        return wav, ps
+    
+    def plot(self):
+        """Plots OSA spectrum
+        """
+        plt.plot(self.wavelengths,self.powers)
+        plt.ylim(-80,0)
+        plt.xlabel('Wavelength [nm]')
+        plt.ylabel('Power [dBm]')
