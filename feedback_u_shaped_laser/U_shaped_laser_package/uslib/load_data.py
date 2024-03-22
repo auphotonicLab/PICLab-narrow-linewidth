@@ -190,7 +190,7 @@ class DshSpectrum:
 
             except ValueError:
                 float_value = value
-                print('The value for' + key + 'is not a float')
+                #print('The value for' + key + 'is not a float')
             #Saving the key and value in the dictionary
             params_dict[key] = float_value
 
@@ -246,18 +246,21 @@ def get_single_measurement(directory: str):
             path_close_signal = path(txt_file)
         if "OSA_full_spectrum" in txt_file:
             path_osa = path(txt_file)
-
     dsh_full = DshSpectrum(path_full_signal,path_full_bg)
 
     #Centering these spectra about the modulation frequency
     dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
-    osa = OsaSpectrum(path_osa)
+
+    if path_osa == None:
+        osa = None
+    else:
+        osa = OsaSpectrum(path_osa)
 
     return dsh_full, dsh_close, osa
 
 #UPDATED VERSION OF GET_ALL_DATA
 def get_lab_session_data(directory):
-    """Used to get paths for all single measurements in a given lab session
+    """Used to get data for all single measurements in a given lab session
 
     Args:
         directory (str): directory path for a measurement session.
@@ -266,12 +269,16 @@ def get_lab_session_data(directory):
         \\Chip 3 Feedback measurements\\Measurements_2024-02-22"
 
     Returns:
-        Array containing paths for all single measurements
+        Array containing data for all single measurements
     """
     files = os.listdir(directory)
+
     def path(file):
         return directory + '\\' + file
-    data = [get_single_measurement(path(file)) for file in files]
+    
+    #Get subfolders in directory
+    paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
+    data = [get_single_measurement(e) for e in paths_dir]
     return data
 
 #MOVED FROM DATA_PROCESSING MODULE
