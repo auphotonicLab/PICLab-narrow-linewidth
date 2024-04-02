@@ -285,7 +285,7 @@ def get_lab_session_data(directory):
 def feedback_ratio(self,laser_power,feedback_power,laser_ref,
                     laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1):
     '''The calculation of the feedback ratio using Simon's derivation.
-    It assumes initially an coupling of 0.4 between the laser and the fiber.
+    It assumes initially a coupling of 0.4 between the laser and the fiber.
     The arguments could be taken from the header of each measurement
     (see ld.extract_meas_params method)
     laser_power_coef and feedback_coef depends on the setup,
