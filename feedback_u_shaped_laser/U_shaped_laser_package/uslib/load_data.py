@@ -196,6 +196,74 @@ class DshSpectrum:
 
         return params_dict
 
+class laser_powers:
+    '''
+    Class extracting laser and feedback powers from separate .txt files
+    Calculates variance and mean
+    '''
+
+    def __init__(self, directory):
+        
+        files = os.listdir(directory)
+
+        measurements = files.copy()
+
+        laser_path = None
+        feedback_path = None
+
+
+        def path(file):
+            return directory + '\\' + file
+
+        for file in files:
+
+            if file.endswith('Laser_power_readings.txt'):
+                laser_path = path(file)
+
+            if file.endswith('Feedback_power_readings.txt'):
+                feedback_path = path(file)
+
+            if file.endswith('.txt'):
+                measurements.remove(file)
+
+        no_of_meas = len(measurements)
+
+        self.laser_powers = [[] for _ in range(no_of_meas)] #Powers
+        self.las_avg = [None for _ in range(no_of_meas)] #Average
+        self.las_var = [None for _ in range(no_of_meas)] #Variance
+
+        self.fb_powers = [[] for _ in range(no_of_meas)]
+        self.fb_avg = [None for _ in range(no_of_meas)]
+        self.fb_var = [None for _ in range(no_of_meas)]
+
+        if laser_path != None:
+
+            with open(laser_path) as laser_file:
+
+                laser_lists = laser_file.readlines()
+            
+                for i in range(no_of_meas): 
+
+                    self.laser_powers[i] = eval(laser_lists[i+1]) #First line is header
+                    self.las_avg[i] = np.average(eval(laser_lists[i+1]))
+                    self.las_var[i] = np.var(eval(laser_lists[i+1]))
+                    
+
+        if feedback_path !=None:
+
+            with open(feedback_path) as feedback_file: 
+                
+                feedback_lists = feedback_file.readlines()
+
+                for i in range(no_of_meas):
+                    
+                    self.fb_powers[i] = eval(feedback_lists[i+1]) #First line is header
+                    self.fb_avg[i] = np.average(eval(feedback_lists[i+1]))
+                    self.fb_var[i] = np.var(eval(feedback_lists[i+1]))
+
+
+
+
 #UPDATED VERSION OF GET_SINGLE_MEASUREMENT_PATHS
 def get_single_measurement(directory: str):
     """Updated version of get_single_measurement_paths
@@ -273,16 +341,25 @@ def get_lab_session_data(directory):
     """
     files = os.listdir(directory)
 
+
     def path(file):
         return directory + '\\' + file
     
     #Get subfolders in directory
     paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
+    
     data = [get_single_measurement(e) for e in paths_dir]
-    return data
+
+    dsh_full = [tuple[0] for tuple in data]
+    dsh_close = [tuple[1] for tuple in data]
+    osa = [tuple[2] for tuple in data]
+    
+    laser_readings = laser_powers(directory)
+
+    return dsh_full, dsh_close, osa, laser_readings
 
 #MOVED FROM DATA_PROCESSING MODULE
-def feedback_ratio(self,laser_power,feedback_power,laser_ref,
+def feedback_ratio(laser_power,feedback_power,laser_ref,
                     laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1):
     '''The calculation of the feedback ratio using Simon's derivation.
     It assumes initially a coupling of 0.4 between the laser and the fiber.
