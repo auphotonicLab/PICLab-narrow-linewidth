@@ -219,11 +219,79 @@ class DshSpectrum:
 
             except ValueError:
                 float_value = value
-                print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
+                #print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
             #Saving the key and value in the dictionary
             params_dict[key] = float_value
 
         return params_dict
+
+class laser_powers:
+    &#39;&#39;&#39;
+    Class extracting laser and feedback powers from separate .txt files
+    Calculates variance and mean
+    &#39;&#39;&#39;
+
+    def __init__(self, directory):
+        
+        files = os.listdir(directory)
+
+        measurements = files.copy()
+
+        laser_path = None
+        feedback_path = None
+
+
+        def path(file):
+            return directory + &#39;\\&#39; + file
+
+        for file in files:
+
+            if file.endswith(&#39;Laser_power_readings.txt&#39;):
+                laser_path = path(file)
+
+            if file.endswith(&#39;Feedback_power_readings.txt&#39;):
+                feedback_path = path(file)
+
+            if file.endswith(&#39;.txt&#39;):
+                measurements.remove(file)
+
+        no_of_meas = len(measurements)
+
+        self.laser_powers = [[] for _ in range(no_of_meas)] #Powers
+        self.las_avg = [None for _ in range(no_of_meas)] #Average
+        self.las_var = [None for _ in range(no_of_meas)] #Variance
+
+        self.fb_powers = [[] for _ in range(no_of_meas)]
+        self.fb_avg = [None for _ in range(no_of_meas)]
+        self.fb_var = [None for _ in range(no_of_meas)]
+
+        if laser_path != None:
+
+            with open(laser_path) as laser_file:
+
+                laser_lists = laser_file.readlines()
+            
+                for i in range(no_of_meas): 
+
+                    self.laser_powers[i] = eval(laser_lists[i+1]) #First line is header
+                    self.las_avg[i] = np.average(eval(laser_lists[i+1]))
+                    self.las_var[i] = np.var(eval(laser_lists[i+1]))
+                    
+
+        if feedback_path !=None:
+
+            with open(feedback_path) as feedback_file: 
+                
+                feedback_lists = feedback_file.readlines()
+
+                for i in range(no_of_meas):
+                    
+                    self.fb_powers[i] = eval(feedback_lists[i+1]) #First line is header
+                    self.fb_avg[i] = np.average(eval(feedback_lists[i+1]))
+                    self.fb_var[i] = np.var(eval(feedback_lists[i+1]))
+
+
+
 
 #UPDATED VERSION OF GET_SINGLE_MEASUREMENT_PATHS
 def get_single_measurement(directory: str):
@@ -275,18 +343,21 @@ def get_single_measurement(directory: str):
             path_close_signal = path(txt_file)
         if &#34;OSA_full_spectrum&#34; in txt_file:
             path_osa = path(txt_file)
-
     dsh_full = DshSpectrum(path_full_signal,path_full_bg)
 
     #Centering these spectra about the modulation frequency
     dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
-    osa = OsaSpectrum(path_osa)
+
+    if path_osa == None:
+        osa = None
+    else:
+        osa = OsaSpectrum(path_osa)
 
     return dsh_full, dsh_close, osa
 
 #UPDATED VERSION OF GET_ALL_DATA
 def get_lab_session_data(directory):
-    &#34;&#34;&#34;Used to get paths for all single measurements in a given lab session
+    &#34;&#34;&#34;Used to get data for all single measurements in a given lab session
 
     Args:
         directory (str): directory path for a measurement session.
@@ -295,19 +366,32 @@ def get_lab_session_data(directory):
         \\Chip 3 Feedback measurements\\Measurements_2024-02-22&#34;
 
     Returns:
-        Array containing paths for all single measurements
+        Array containing data for all single measurements
     &#34;&#34;&#34;
     files = os.listdir(directory)
+
+
     def path(file):
         return directory + &#39;\\&#39; + file
-    data = [get_single_measurement(path(file)) for file in files]
-    return data
+    
+    #Get subfolders in directory
+    paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
+    
+    data = [get_single_measurement(e) for e in paths_dir]
+
+    dsh_full = [tuple[0] for tuple in data]
+    dsh_close = [tuple[1] for tuple in data]
+    osa = [tuple[2] for tuple in data]
+    
+    laser_readings = laser_powers(directory)
+
+    return dsh_full, dsh_close, osa, laser_readings
 
 #MOVED FROM DATA_PROCESSING MODULE
-def feedback_ratio(self,laser_power,feedback_power,laser_ref,
-                    laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1):
+def feedback_ratio(laser_power,feedback_power,laser_ref,
+                    laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1.0):
     &#39;&#39;&#39;The calculation of the feedback ratio using Simon&#39;s derivation.
-    It assumes initially an coupling of 0.4 between the laser and the fiber.
+    It assumes initially a coupling of 0.4 between the laser and the fiber.
     The arguments could be taken from the header of each measurement
     (see ld.extract_meas_params method)
     laser_power_coef and feedback_coef depends on the setup,
@@ -377,11 +461,11 @@ class OsaSpectrum:
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="uslib.load_data.feedback_ratio"><code class="name flex">
-<span>def <span class="ident">feedback_ratio</span></span>(<span>self, laser_power, feedback_power, laser_ref, laser_power_coef=0.025, coupling_ref=0.4, feedback_coef=1)</span>
+<span>def <span class="ident">feedback_ratio</span></span>(<span>laser_power, feedback_power, laser_ref, laser_power_coef=0.025, coupling_ref=0.4, feedback_coef=1.0)</span>
 </code></dt>
 <dd>
 <div class="desc"><p>The calculation of the feedback ratio using Simon's derivation.
-It assumes initially an coupling of 0.4 between the laser and the fiber.
+It assumes initially a coupling of 0.4 between the laser and the fiber.
 The arguments could be taken from the header of each measurement
 (see ld.extract_meas_params method)
 laser_power_coef and feedback_coef depends on the setup,
@@ -390,10 +474,10 @@ as it is the amount of splitting done before the power meters.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def feedback_ratio(self,laser_power,feedback_power,laser_ref,
-                    laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1):
+<pre><code class="python">def feedback_ratio(laser_power,feedback_power,laser_ref,
+                    laser_power_coef = 1/40, coupling_ref = 0.4, feedback_coef = 1.0):
     &#39;&#39;&#39;The calculation of the feedback ratio using Simon&#39;s derivation.
-    It assumes initially an coupling of 0.4 between the laser and the fiber.
+    It assumes initially a coupling of 0.4 between the laser and the fiber.
     The arguments could be taken from the header of each measurement
     (see ld.extract_meas_params method)
     laser_power_coef and feedback_coef depends on the setup,
@@ -408,7 +492,7 @@ as it is the amount of splitting done before the power meters.</p></div>
 <span>def <span class="ident">get_lab_session_data</span></span>(<span>directory)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Used to get paths for all single measurements in a given lab session</p>
+<div class="desc"><p>Used to get data for all single measurements in a given lab session</p>
 <h2 id="args">Args</h2>
 <dl>
 <dt><strong><code>directory</code></strong> :&ensp;<code>str</code></dt>
@@ -418,13 +502,13 @@ as it is the amount of splitting done before the power meters.</p></div>
 "O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips
 \Chip 3 Feedback measurements\Measurements_2024-02-22"</p>
 <h2 id="returns">Returns</h2>
-<p>Array containing paths for all single measurements</p></div>
+<p>Array containing data for all single measurements</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def get_lab_session_data(directory):
-    &#34;&#34;&#34;Used to get paths for all single measurements in a given lab session
+    &#34;&#34;&#34;Used to get data for all single measurements in a given lab session
 
     Args:
         directory (str): directory path for a measurement session.
@@ -433,13 +517,26 @@ as it is the amount of splitting done before the power meters.</p></div>
         \\Chip 3 Feedback measurements\\Measurements_2024-02-22&#34;
 
     Returns:
-        Array containing paths for all single measurements
+        Array containing data for all single measurements
     &#34;&#34;&#34;
     files = os.listdir(directory)
+
+
     def path(file):
         return directory + &#39;\\&#39; + file
-    data = [get_single_measurement(path(file)) for file in files]
-    return data</code></pre>
+    
+    #Get subfolders in directory
+    paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
+    
+    data = [get_single_measurement(e) for e in paths_dir]
+
+    dsh_full = [tuple[0] for tuple in data]
+    dsh_close = [tuple[1] for tuple in data]
+    osa = [tuple[2] for tuple in data]
+    
+    laser_readings = laser_powers(directory)
+
+    return dsh_full, dsh_close, osa, laser_readings</code></pre>
 </details>
 </dd>
 <dt id="uslib.load_data.get_single_measurement"><code class="name flex">
@@ -524,12 +621,15 @@ Full span OSA spectrum</dd>
             path_close_signal = path(txt_file)
         if &#34;OSA_full_spectrum&#34; in txt_file:
             path_osa = path(txt_file)
-
     dsh_full = DshSpectrum(path_full_signal,path_full_bg)
 
     #Centering these spectra about the modulation frequency
     dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
-    osa = OsaSpectrum(path_osa)
+
+    if path_osa == None:
+        osa = None
+    else:
+        osa = OsaSpectrum(path_osa)
 
     return dsh_full, dsh_close, osa</code></pre>
 </details>
@@ -746,7 +846,7 @@ Set to 0 by default</dd>
 
             except ValueError:
                 float_value = value
-                print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
+                #print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
             #Saving the key and value in the dictionary
             params_dict[key] = float_value
 
@@ -825,7 +925,7 @@ The units used are most likely: meters, watts, volts, dB, MHz</p></div>
 
         except ValueError:
             float_value = value
-            print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
+            #print(&#39;The value for&#39; + key + &#39;is not a float&#39;)
         #Saving the key and value in the dictionary
         params_dict[key] = float_value
 
@@ -1138,6 +1238,83 @@ from 2024-02-18 and onwards</p>
 </dd>
 </dl>
 </dd>
+<dt id="uslib.load_data.laser_powers"><code class="flex name class">
+<span>class <span class="ident">laser_powers</span></span>
+<span>(</span><span>directory)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Class extracting laser and feedback powers from separate .txt files
+Calculates variance and mean</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class laser_powers:
+    &#39;&#39;&#39;
+    Class extracting laser and feedback powers from separate .txt files
+    Calculates variance and mean
+    &#39;&#39;&#39;
+
+    def __init__(self, directory):
+        
+        files = os.listdir(directory)
+
+        measurements = files.copy()
+
+        laser_path = None
+        feedback_path = None
+
+
+        def path(file):
+            return directory + &#39;\\&#39; + file
+
+        for file in files:
+
+            if file.endswith(&#39;Laser_power_readings.txt&#39;):
+                laser_path = path(file)
+
+            if file.endswith(&#39;Feedback_power_readings.txt&#39;):
+                feedback_path = path(file)
+
+            if file.endswith(&#39;.txt&#39;):
+                measurements.remove(file)
+
+        no_of_meas = len(measurements)
+
+        self.laser_powers = [[] for _ in range(no_of_meas)] #Powers
+        self.las_avg = [None for _ in range(no_of_meas)] #Average
+        self.las_var = [None for _ in range(no_of_meas)] #Variance
+
+        self.fb_powers = [[] for _ in range(no_of_meas)]
+        self.fb_avg = [None for _ in range(no_of_meas)]
+        self.fb_var = [None for _ in range(no_of_meas)]
+
+        if laser_path != None:
+
+            with open(laser_path) as laser_file:
+
+                laser_lists = laser_file.readlines()
+            
+                for i in range(no_of_meas): 
+
+                    self.laser_powers[i] = eval(laser_lists[i+1]) #First line is header
+                    self.las_avg[i] = np.average(eval(laser_lists[i+1]))
+                    self.las_var[i] = np.var(eval(laser_lists[i+1]))
+                    
+
+        if feedback_path !=None:
+
+            with open(feedback_path) as feedback_file: 
+                
+                feedback_lists = feedback_file.readlines()
+
+                for i in range(no_of_meas):
+                    
+                    self.fb_powers[i] = eval(feedback_lists[i+1]) #First line is header
+                    self.fb_avg[i] = np.average(eval(feedback_lists[i+1]))
+                    self.fb_var[i] = np.var(eval(feedback_lists[i+1]))</code></pre>
+</details>
+</dd>
 </dl>
 </section>
 </article>
@@ -1177,6 +1354,9 @@ from 2024-02-18 and onwards</p>
 <li><code><a title="uslib.load_data.OsaSpectrum.get_data" href="#uslib.load_data.OsaSpectrum.get_data">get_data</a></code></li>
 <li><code><a title="uslib.load_data.OsaSpectrum.plot" href="#uslib.load_data.OsaSpectrum.plot">plot</a></code></li>
 </ul>
+</li>
+<li>
+<h4><code><a title="uslib.load_data.laser_powers" href="#uslib.load_data.laser_powers">laser_powers</a></code></h4>
 </li>
 </ul>
 </li>
