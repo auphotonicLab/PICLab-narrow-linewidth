@@ -15,6 +15,7 @@ from datetime import datetime
 from TLPM import TLPM
 from tkinter import Tk, filedialog
 import sys
+import socket
 #import System
 import clr   # COMMON LANGUAGE RUNTIME, part of pythonnet package, do not confuse with "clr" package
 from ctypes import (cdll,
@@ -30,6 +31,7 @@ from ctypes import (cdll,
                     c_double,
                     sizeof,
                     c_voidp)
+
 # %%
 cwd = os.getcwd()
 
@@ -843,7 +845,8 @@ class AFG_Siglent:
                  frequency=120000000,
                  waveform='SINE',
                  vpp=1.8,
-                 offset=0,
+                 offset=0, 
+                 load = 50 # Use 50 or 'HZ'
                  ):
         
         self.frequency = frequency
@@ -851,6 +854,7 @@ class AFG_Siglent:
         self.waveform = waveform
         self.channel = channel
         self.offset = offset
+        self.load = load
         
         rm = visa.ResourceManager()
         resourceName ='TCPIP0::' + IP_address + '::inst0::INSTR'
@@ -862,6 +866,8 @@ class AFG_Siglent:
         self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
         self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(offset))
         
+        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
+        
         if alive != 0:
             print('AFG_SIGLENT is alive')
             print(alive)
@@ -871,12 +877,16 @@ class AFG_Siglent:
                       waveform='SINE',
                       frequency=120000000,
                       vpp=1.8,
-                      offset=0):
+                      offset=0,
+                      load = 50 # Use 50 or 'HZ'
+                      ):
     
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
         self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
         self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
         self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(offset))  # Vpp
+        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
+
 
     def output_status(self,channel=1,status='ON'):
         self.instr.write('C' + str(channel) + ':OUTP ' + str(status))
@@ -1163,11 +1173,17 @@ class ESA_RS_FSV30:
                  sweepCount=1):
         self.channel = channel
         rm= visa.ResourceManager()
-        if GPIB_interface>-1: #Set GPIB_interface=0 to use GPIB instead of TCP/IP
+        
+        if GPIB_interface == 'usb':
+            resourceName = 'USB0::0x0AAD::0x00CB::101308::INSTR'
+        
+        elif GPIB_interface>-1: #Set GPIB_interface=0 to use GPIB instead of TCP/IP
             resourceName = 'GPIB'+str(int(GPIB_interface))+'::'+str(channel)+'::INSTR'
+
         else:
             resourceName ='TCPIP0::'+IP_address+'::inst0::INSTR'
-		
+            
+        print(rm.list_resources(),resourceName)
         self.instr = rm.open_resource(resourceName)
         alive = self.instr.query('*IDN?')
         self.instr.read_termination = '\n'
@@ -1274,13 +1290,164 @@ class ESA_RS_FSV30:
     def CloseConnection(self):
         self.instr.close()
 
+#%%
+
+class LMS_ANDO_AQ4321A: #developer: Andreas  
+    
+    def __init__(self,channel=19,GPIB_interface=0):
+        self.channel = channel
+        rm= visa.ResourceManager()
+        resourceName = 'GPIB'+str(int(GPIB_interface))+'::'+str(channel)+'::INSTR'
+        self.instr = rm.open_resource(resourceName)
+        alive = self.instr.query('*IDN?')
+        #self.instr.read_termination = '\n'
+        #self.instr.write_termination = '\n'
+        self.instr.timeout = 10000
+        if alive != 0:
+            print('Ando AQ4321A is alive')
+            print(alive)
+
+    def Unlock(self, password=4321):
+        #Does not work; manual password entry on startup is still needed;
+        #this function is for locking the device and has nothng to do with the startup
+        if str(self.instr.query('LOCK?')) == 1:
+            self.instr.write('LOCK0 '+str(password));
+            print('Device unlocked.');
+        else: print('Device has already been unlocked.');
+         
+    def InitialiseDevice(self):
+        #Not sure if this does anything
+        self.instr.write('INIT');
+        while (int(self.instr.query('INIT?'))  == 1):
+            time.sleep(0.5);
+        print('Device initialised.'); 
+    
+    def SetLaserState(self, onoff = 1):
+        self.instr.write('L'+str(onoff));
+        if (self.instr.query('L?') == 0): 
+            print('Laser off')
+        else:
+            if (self.instr.query('L?') == 1): 
+                print('Laser on');
+                
+    def SetPower(self, mW=5.0):
+        self.instr.write('TPMW'+str(mW));
+        
+    def SetWL(self, nm=1550.0):
+        self.instr.write('TWL'+str(nm));
+        
+    def WriteGPIB(self, string):
+        self.instr.write(string);   
+        
+    def QueryGPIB(self, string):
+        return self.instr.query(string);
+        
+    def CloseConnection(self):
+        self.instr.close()
+
+#%%
+
+#The ANDO OSA (AQ6315A)
+class ANDO_OSA:
+    def __init__(self, channel=30, GPIB_interface=1):
+        self.channel = channel
+        rm = visa.ResourceManager()
+        resourceName = 'GPIB' + str(int(GPIB_interface)) + '::' + str(channel) + '::INSTR'
+        # print(rm.list_resources())
+        self.instr = rm.open_resource(resourceName);
+        self.instr.write('ATREF0');
+        #self.instr.write('SMPL1001')
+        #self.instr.write('SNAT')
+
+        # alive = self.instr.query('*IDN?')
+        # self.instr.read_termination = '\n'
+        # self.instr.write_termination = '\n'
+        # self.instr.timeout = 10000
+        # if alive != 0:
+        #    print('Ando AQ4321A is alive')
+        #    # print(alive)
+
+    def SetLeveldB(self, Level=-65.0):
+        self.instr.write('REFL' + str(Level));  # in dBm XXX.X
+
+    def SetLevelnW(self, Level=1.00):
+        self.instr.write('REFN' + str(Level));  # in nW X.XX
+
+    def SetLeveluW(self, Level=1.00):
+        self.instr.write('REFU' + str(Level));  # in uW X.XX 0.01 --> 1 to 9.99, 0.1-->10 to 99.9,
+
+    def SetLevelmW(self, Level=1.00):
+        self.instr.write('REFM' + str(Level));  # in mW X.XX 0.01 --> 1 to 9.99, 0.1-->10 to 99.9
+
+    def CenterWL(self, WL=450.0):
+        self.instr.write('CTRWL' + str(WL));
+
+    def SingleSweep(self):
+        self.instr.write('SGL');
+
+    def AutoSweep(self):
+        self.instr.write('AUTO');
+
+    def ContinousSweep(self):
+        self.instr.write('RPT');
+
+    def SetupOSA(self, CenterWL=950, Span=10, Level=0, Resolution=0.05, Sensitivity=0, Preview=0):
+        self.instr.write('CTRWL' + str(CenterWL));  # in nm
+        self.instr.write('SPAN' + str(Span));  # in nm
+        self.instr.write('RESLN' + str(Resolution))  # in nm XX.XX
+        if Sensitivity == 0:
+            self.instr.write('SNAT');
+        else:
+            self.instr.write('SHI' + str(Sensitivity))
+
+        if Level == 0:
+            self.instr.write('ATREF1');
+        else:
+            self.instr.write('REFL' + str(Level));  # in dBm XXX.X
+        if Preview == 1:
+            self.instr.write('SGL');
+
+    def Stop(self):
+        self.instr.write('STP');
+
+    def stop(self):
+        self.instr.write('STP');
+
+    def StopSweep(self):
+        self.instr.write('STP');
+
+    def GetSpectrum(self):
+        # time.sleep(5)
+        self.instr.write('SGL');
+        self.instr.write('SD0')
+        Status = 1
+        StatusOut = []
+
+
+        while Status == 1:
+            Mode = self.instr.query('SWEEP?')[0:-2]  # Something is broken here... Check up on the output of mode
+            Status = float(Mode)
+            time.sleep(0.2)
+            StatusOut.append(Status)
+
+        Power = self.instr.query('LDATAR0001-R1001')
+
+        # Power=Power.replace("−", "-")
+        print(Power)
+        PowerF = [float(value) for value in Power.split(',')]
+
+        WL = self.instr.query('WDATAR0001-R1001')
+
+        WLF = [float(value) for value in WL.split(', ')]
+        return [PowerF[1:], WLF[1:]]
+
 
 # %%
 class FILT_WLTF: #developer: Lars Nielsen
     '''
     Class to control narrowband tunable band pass filter.
     '''
-    def __init__(self,COMport=8):
+    def __init__(self,COMport=4):
         rm = visa.ResourceManager()
         resourceName = 'COM' + str(int(COMport))
         self.instr = rm.open_resource(resourceName)
@@ -1295,7 +1462,7 @@ class FILT_WLTF: #developer: Lars Nielsen
             print(alive)
             #print(self.instr.read())
             
-    def SetCenterWavelength(self,lambda0=1550.000,tries=10):
+    def SetCenterWavelength(self,lambda0=1550.000,tries=10): # Take into accont an offset of 1 nm: Set the center to the desired WL minus 1 nm
         messageODL = 'NONE'
         messageODL = self.instr.query('WL'+ str(lambda0))
         i=0
@@ -1338,5 +1505,264 @@ class FILT_WLTF: #developer: Lars Nielsen
         lambda0  = float(messageODL[11:19])       
         return lambda0
 
+    def CloseConnection(self):
+        self.instr.close()
+# %%
+
+# Classes for the communication layer:#######################
+# Needed for Yenista OSA20
+
+
+class socketInstrument: #developer: Lars Nielsen
+    def __init__(self,ip_address='192.168.1.3',tcp_port=5025,timeoutVal=120):
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.connect((ip_address, tcp_port))
+        self.s.settimeout(timeoutVal)
+
+    def write(self,command='*IDN?'):
+        self.s.send((command+"\r\n").encode())
+
+    def read(self):
+        endFlag = 0
+        data = ''
+        while endFlag==0:
+            data=data+self.s.recv(1).decode()
+            if data[-1]=='\n':
+                break
+
+        return data[:(len(data)-1)]
+                
+        
+    def query(self,command):
+        self.write(command)
+
+        return self.read()
+
+    def query_ascii_values(self,command):
+        self.write(command)
+
+        return np.array(self.read().split(',')).astype(np.float).tolist()
+
+    def close(self):
+        self.s.close()
+
+# %%
+
+class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
+    """
+    - DESCRIPTION:
+        This class is for controlling the Yenista OSA20
+
+        channel : integer
+            For choosing the GPIB channel of the GPIB communication.
+            
+        GPIB_interface : integer
+            For choosing the GPIB interface of the GPIB communication. Set to -1 if ethernet communcation is used instead
+
+        spanWave : float
+            The span of the spectrum which is to be read from the instrument. Given in nanometers.
+
+        centerWave : float
+            The center wavelength of the spectrum which is to be read from the instrument. Given in nanometers.
+
+        resolutionBW : float
+            The resolution of the spectrum which is to be read from the instrument. Given in nanometers.
+
+        sensitivity : int
+            Chooses the dynamic sensitivity of the spectrum.
+                1: -55 dBm (2000 nm/s) 
+                2: -60 dBm (700 nm/s)
+                3: -65 dBm (200 nm/s)
+                4: -70 dBm (20 nm/s)
+                5: -75 dBm (2 nm/s)
+                6: High (0.5 nm/s)
+                7: Burst
+
+        ip_address : string
+            Sets the ip address of the TCP IP commuication when ethernet is used.
+
+        tcp_port : integer
+            Sets the port of the TCP IP commuication when ethernet is used.
+    """
+
+    def __init__(self,channel=16,GPIB_interface=1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025):
+        self.channel = channel
+        rm= visa.ResourceManager()
+        
+        if GPIB_interface>-1:
+            resourceName = 'GPIB'+str(int(GPIB_interface))+'::'+str(channel)+'::INSTR'
+            self.instr = rm.open_resource(resourceName)
+            self.instr.open()
+        #elif GPIB_interface == 'usb':
+            #resourceName = 'USB0::0x0AAD::0x00CB::101308::INSTR'
+        elif GPIB_interface==-1:
+            self.instr = socketInstrument(ip_address=ip_address,tcp_port=tcp_port)
+                   
+        alive = self.instr.query('*IDN?')
+        if alive != 0:
+            print('OSA_YENISTA_OSA20 is alive')
+            print(alive)
+
+        #Initalization:
+        self.instr.write(':OSA 1')              #OSA mode
+        self.instr.write(':STOP')               #Make sure that no scan is running
+        self.instr.write(':INIT:SMOD SING')     #Set single sweep mode
+        self.instr.write(':DISP: ON')           #Show on OSA display as well
+        self.instr.write(':CALC:AUTO ON')       #Calculations -> automatic
+
+        self.spanWave = spanWave
+        self.centerWave = centerWave
+        self.resolutionBW = resolutionBW
+        self.sensitivity = sensitivity        
+
+    def StartMeasurement(self):
+        self.instr.write(':INIT:IMM')                                               #Start frequency sweep
+        #Ask OSA if measurement is done x20:
+        count=0
+        while int(self.instr.query(':STAT:OPER:COND?')): #Wait for 20 seconds or until the measurement is done
+            time.sleep(1)                             
+            count=count+1
+            if count>20:
+                break
+        return 0; 
+    
+    def ReadSpectrumSimple(self):
+        #Leaves OSA scanning parameters untouched
+        #Start OSA measurement:
+
+        
+        #Initilize parameters for trace fetch:
+        dataOut = []
+        waveAxis = []
+        startTRACE = ( self.instr.query_ascii_values(':TRAC1:DATA:STAR?')[0] )*(10**9)
+        lengthTRACE = int(self.instr.query_ascii_values(':TRAC1:DATA:LENG?')[0])
+        sampTRACE = (self.instr.query_ascii_values(':TRAC1:DATA:SAMP?')[0] )*(10**9)
+              
+       #Fetch trace data:
+        for i in range(lengthTRACE):
+            waveAxis.append(startTRACE+i*sampTRACE)
+        dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
+
+        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+
+    def ReadSpectrum(self):
+        #Set the OSA scanning parameters:
+        self.instr.write(':SENS:WAV:CENT '+str(self.centerWave)+'NM')               #Center frequency
+        self.instr.write(':SENS:WAV:SPAN '+str(self.spanWave)+'NM')                 #Frequency span
+        self.instr.write(':SENS:BAND '+str(self.resolutionBW*(10**3))+'pm')         #Resolution bandwidth
+        self.instr.write(':SENS '+str(self.sensitivity))
+
+        #Start OSA measurement:
+        self.instr.write(':INIT:IMM')                                               #Start frequency sweep
+        #Ask OSA if measurement is done x20:
+        count=0
+        while int(self.instr.query(':STAT:OPER:COND?')): #Wait for 20 seconds or until the measurement is done
+            time.sleep(1)                             
+            count=count+1
+            if count>20:
+                break
+        
+        #Initilize parameters for trace fetch:
+        dataOut = []
+        waveAxis = []
+        startTRACE = ( self.instr.query_ascii_values(':TRAC1:DATA:STAR?')[0] )*(10**9)
+        lengthTRACE = int(self.instr.query_ascii_values(':TRAC1:DATA:LENG?')[0])
+        sampTRACE = (self.instr.query_ascii_values(':TRAC1:DATA:SAMP?')[0] )*(10**9)
+              
+       #Fetch trace data:
+        for i in range(lengthTRACE):
+            waveAxis.append(startTRACE+i*sampTRACE)
+        dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
+
+        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+
+    #### Andreas
+
+
+    def ReadPeakData(self):
+        #returns dictionary; dictionaries are pythons version of structures
+        self.instr.write(':CALC:PAR:SMSR ON');
+        
+        FullString = self.instr.query(":CALC:DATA:SMSR?")
+        SplitString = FullString.split(','); #splits into array; sep: comma
+        
+        
+        try:
+            PWL = float(SplitString[5])
+        except:
+            PWL = 0
+        try:
+            PL = float(SplitString[8])
+        except:
+            PL = 0           
+        try:
+            S1WL = float(SplitString[14])
+        except:
+            S1WL = 0            
+        try:
+            S1L = float(SplitString[17])
+        except:
+            S1L = 0            
+        try:
+            S1DWL = float(SplitString[20])
+        except:
+            S1DWL = 0  
+        try:
+            S1SMSR = float(SplitString[23])
+        except:
+            S1SMSR = 0            
+        try:
+            S2WL = float(SplitString[29])
+        except:
+            S2WL = 0            
+        try:
+            S2L = float(SplitString[32])
+        except:
+            S2L = 0
+        try:
+            S2DWL = float(SplitString[35])
+        except:
+            S2DWL = 0            
+        try:
+            S2SMSR = float(SplitString[38])
+        except:
+            S2SMSR = 0
+            
+        ReturnDict = {
+        'Peak_WL' : PWL,
+        'Peak_WL_Unit' : SplitString[6], #physical unit used; e.g. m
+        'Peak_Level' : PL,
+        'Peak_Level_Unit' : SplitString[9],
+        'SideMode1_WL' : S1WL,
+        'SideMode1_WL_Unit' : SplitString[15],
+        'SideMode1_Level' : S1L,
+        'SideMode1_Level_Unit' : SplitString[18],
+        'SideMode1_DiffWL' : S1DWL,
+        'SideMode1_DiffWL_Unit' : SplitString[21],
+        'SideMode1_SMSR' : S1SMSR,
+        'SideMode1_SMSR_Unit' : SplitString[24],
+        'SideMode2_WL' : S2WL,
+        'SideMode2_WL_Unit' : SplitString[30],
+        'SideMode2_Level' : S2L,
+        'SideMode2_Level_Unit' : SplitString[33],
+        'SideMode2_DiffWL' : S2DWL,
+        'SideMode2_DiffWL_Unit' : SplitString[36],
+        'SideMode2_SMSR' : S2SMSR,
+        'SideMode2_SMSR_Unit' : SplitString[39]
+        }
+        return ReturnDict;
+        # Peak_WL = ReturnDict['Peak_WL']
+        
+    def ReadValue(self, Value='Peak_WL'):
+        ReturnDict=self.ReadPeakData()
+        return ReturnDict[Value]
+        #return ReturnDict.get(Value)
+    
+    def WriteGPIB(self, string):
+        self.instr.write(string);    
+        
+    def QueryGPIB(self, string):
+        return self.instr.query(string); 
+    
     def CloseConnection(self):
         self.instr.close()
