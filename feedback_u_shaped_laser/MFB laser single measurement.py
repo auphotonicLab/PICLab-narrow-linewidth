@@ -3,16 +3,32 @@ import time
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import os
-import Moni_Lab_control as pic
 import shutil
+import sys
+import multiprocessing
+
+
 
 from datetime import datetime 
 import winsound as ws
-import pyvisa as visa
+
 import random
 
 #%%
 
+import pyvisa as visa
+
+rm = visa.ResourceManager()
+
+print(rm.list_resources())
+
+#%%
+import Moni_Lab_control as pic
+
+OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
+
+
+#%%
 
 def set_Tosa_params(tosa, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 40, soa2curr = 40, ph1curr = 0, ph2curr = 0):
 
@@ -64,6 +80,9 @@ def set_Tosa_params(tosa, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, so
 
 def connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = True, EOM_bool = True, Laser_Powermeter_bool = True, Feedback_Powermeter_bool = True, DC_supply_bool = False): 
 
+        
+    import Moni_Lab_control as pic
+    
     res = []
 
     
@@ -76,21 +95,22 @@ def connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = True, E
 
 
     if OSA_bool:
-        OSA = pic.OSA_YOKOGAWA(GPIB_interface=1,channel=7)
+        #OSA = pic.OSA_YOKOGAWA(GPIB_interface=0,channel=7)
+        OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
         res.append(OSA)
     else:
         res.append(0)
 
 
     if ESA_bool:
-        ESA = pic.ESA_RS_FSV30(channel=29, GPIB_interface=1)
+        ESA = pic.ESA_RS_FSV30(channel=15, GPIB_interface='usb')
         res.append(ESA)
     else:
         res.append(0)
 
 
     if EOM_bool:
-        EOM = pic.AFG_Siglent(channel=1,frequency=80*10**6,vpp=4.4)
+        EOM = pic.AFG_Siglent(channel=1,frequency=80*10**6,vpp=4.4, load=50)
         res.append(EOM)
     else:
         res.append(0)
@@ -111,28 +131,63 @@ def connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = True, E
 
 
     if DC_supply_bool:
-        volt_source = pic.DC_Siglent(voltage=4.9)
+        volt_source = pic.DC_Siglent(voltage=2.9)
         res.append(volt_source)
     else:
         res.append(0)
 
     return res
 
-
-
+def close_connections(TOSA, OSA, ESA, EOM, Laser_Powermeter, Feedback_Powermeter, DC_supply): 
+    
+    try:
+        TOSA.closeCommunication()
+    except:
+        print("TOSA wasn't connected initially")
+        
+    try:
+        OSA.CloseConnection()
+    except:
+        print("OSA wasn't connected initially")
+        
+    try:
+       ESA.CloseConnection()
+    except:
+        print("ESA wasn't connected initially")
+        
+    try:
+        EOM.CloseConnection()
+    except:
+        print("EOM wasn't connected initially")        
+        
+    try:
+        Laser_Powermeter.closeConnection()
+    except:
+        print("Laser powermeter wasn't connected initially")        
+        
+    try:
+        Feedback_Powermeter.closeConnection()
+    except:
+        print("Feedback powermeter wasn't connected initially")        
+        
+    try:
+        DC_supply.closeConnection()
+    except:
+        print("DC supply wasn't connected initially")
 
 #%% Function for single measurement.
+
 
 def OSA_measurement(OSA):
 
 
-    spanwav_full = 50
+    spanwav_full = 500 #50
     spanwav_peak = 20
-    resolution_full = 0.05
+    resolution_full = 0.5 # 0.2 dual WL
     resolution_peak = 0.02
     dbres = 107
     reflev = -5
-    OSA.SetParameters(centerWave=1535,
+    OSA.SetParameters(centerWave=1550, #1530
                       spanWave=spanwav_full,
                       resolutionBW=resolution_full,
                       dbres=dbres,
@@ -168,10 +223,10 @@ def plot_OSA(OSA, measurementname=str, savename=str, save_plots_data=True):
     plt.ylabel('OSA Power [dBm]')
     plt.xlabel('Wavelength [nm]')
     plt.title('OSA spectrum')
-    plt.ylim([-80,10])
+    plt.ylim([-80,-20]) # -80, 10
     if save_plots_data:
         plt.savefig(f'.\\{savename}_OSA_full_spectrum{measurementname}.png' )
-        np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}',data_full_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_full}.txt')
+        np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}.txt',data_full_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_full}')
 
     '''
     plt.figure()
@@ -183,13 +238,14 @@ def plot_OSA(OSA, measurementname=str, savename=str, save_plots_data=True):
 
     if save_plots_data:
         plt.savefig('.\\OSA_peak_spectrum_' + measurementname)
-        np.savetxt('.\\OSA_peak_spectrum_' + measurementname,data_peak_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_peak}.txt')
+        np.savetxt(f'.\\OSA_peak_spectrum_' + {measurementname}.txt,data_peak_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_peak}')
     '''
     return data_full_OSA, data_peak_OSA
 
 
 
 def ESA_measurement(ESA, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_dsh = 20, resolution_BW_full=0.05, freqcenter_full = 80, span_ESA_full = 100, sweepcount = 100):
+    
     
     ESA.SetSpectrumParameters(spanFreq=span_ESA_full,
                               centerFreq=freqcenter_full,
@@ -198,27 +254,30 @@ def ESA_measurement(ESA, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_
                               sweepCount = int(sweepcount/2))
         
     data_full = ESA.ReadSpectrum()
-
-
+    
+    
     ESA.SetSpectrumParameters(spanFreq=span_ESA_dsh,
                               centerFreq=freqcenter_dsh,
                               videoBW=resolution_BW_dsh,
                               resolutionBW=resolution_BW_dsh,
                               sweepCount=sweepcount)
     
+    
     data_peak = ESA.ReadSpectrum()
         
+
         
     return  data_full, data_peak
 
 
 
 
-def plot_ESA(ESA, measurementname = str, save_name=str, delay_length = float, modulation_frequency = any, V_pp = float, feedback_ratio = str, laserPower = any, laser_ref = any, feedbackPower = any, save_plots_data=True, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_dsh = 20, resolution_BW_full=0.05, freqcenter_full = 80,span_ESA_full = 100, sweepcount = 100):
+def plot_ESA(ESA, measurementname = str, save_name=str, delay_length = float, modulation_frequency = any, V_pp = float, feedback_ratio = str, laserPower = any, laser_ref = any, feedbackPower = any, save_plots_data=True, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_dsh = 20, resolution_BW_full=0.05, freqcenter_full = 80,span_ESA_full = 100, sweepcount = 100, voltage_DC = float, temperature = float):
     
         
+    
     data_full_ESA, data_peak_ESA = ESA_measurement(ESA, resolution_BW_dsh, freqcenter_dsh, span_ESA_dsh, resolution_BW_full, freqcenter_full, span_ESA_full, sweepcount)
-
+    print(span_ESA_dsh, resolution_BW_full, freqcenter_full, span_ESA_full)
     
     plt.figure()
     plt.plot(data_full_ESA[0]*1e-6,data_full_ESA[1])
@@ -227,7 +286,7 @@ def plot_ESA(ESA, measurementname = str, save_name=str, delay_length = float, mo
     plt.title('ESA spectrum' + measurementname + ' feedback: ' + feedback_ratio)
     if save_plots_data:
         plt.savefig(f'.\\{save_name}_ESA_full_spectrum_{measurementname},feedback_{feedback_ratio}.png')
-        np.savetxt(f'.\\{save_name}_ESA_full_spectrum_{measurementname},feedback_{feedback_ratio}.txt', data_full_ESA, header = f'Delay: {delay_length} m, Modulation frequency: {modulation_frequency} MHz, V_pp = {V_pp}, Reference laser power = {laser_ref}, Laser power = {laserPower}, Feedback power = {feedbackPower}, Feedback ratio: ' + feedback_ratio + f', \n Parameters: resolutionBW = {resolution_BW_full}, freqcenter = {freqcenter_full}, span = {span_ESA_full}, sweepcount = {int(sweepcount/2)}')
+        np.savetxt(f'.\\{save_name}_ESA_full_spectrum_{measurementname},feedback_{feedback_ratio}.txt', data_full_ESA, header = f'Delay: {delay_length} m, Modulation frequency: {modulation_frequency} MHz, V_pp = {V_pp}, Reference laser power = {laser_ref}, Laser power = {laserPower}, Feedback power = {feedbackPower}, Feedback ratio: ' + feedback_ratio + f', \n Parameters: resolutionBW = {resolution_BW_full}, freqcenter = {freqcenter_full}, span = {span_ESA_full}, sweepcount = {int(sweepcount/2)}, DC voltage = {voltage_DC}, temperature = {temperature}')
 
 
     plt.figure()
@@ -237,7 +296,7 @@ def plot_ESA(ESA, measurementname = str, save_name=str, delay_length = float, mo
     plt.title('ESA spectrum' + measurementname + ' feedback: ' + feedback_ratio)
     if save_plots_data:
         plt.savefig(f'.\\{save_name}_ESA_peak_spectrum_{measurementname},feedback_{feedback_ratio}.png')
-        np.savetxt(f'.\\{save_name}_ESA_peak_spectrum_{measurementname},feedback_{feedback_ratio}.txt', data_peak_ESA, header = f'Delay: {delay_length} m, Modulation frequency: {modulation_frequency} MHz, V_pp = {V_pp}, Reference laser power = {laser_ref}, Laser power = {laserPower}, Feedback power = {feedbackPower}, Feedback ratio: ' + feedback_ratio + f', \n Parameters: resolutionBW = {resolution_BW_dsh}, freqcenter = {freqcenter_dsh}, span = {span_ESA_dsh}, sweepcount = {sweepcount}')
+        np.savetxt(f'.\\{save_name}_ESA_peak_spectrum_{measurementname},feedback_{feedback_ratio}.txt', data_peak_ESA, header = f'Delay: {delay_length} m, Modulation frequency: {modulation_frequency} MHz, V_pp = {V_pp}, Reference laser power = {laser_ref}, Laser power = {laserPower}, Feedback power = {feedbackPower}, Feedback ratio: ' + feedback_ratio + f', \n Parameters: resolutionBW = {resolution_BW_dsh}, freqcenter = {freqcenter_dsh}, span = {span_ESA_dsh}, sweepcount = {sweepcount}, DC voltage = {voltage_DC}, temperature = {temperature}')
     
     return data_full_ESA, data_peak_ESA
 
@@ -266,22 +325,27 @@ def feedback_ratio(LaserPWR,FeedbackPWR, Laser_ref, Laser_coef, Feedback_coef=1,
 
 
 
-def single_measurement(measurementname = str, measure_OSA = True, save_plots_data = True, feedback_on = True, delay_length = 3000, modulation_frequency=80, V_pp = 4.4, ESA=any, OSA=any, EOM = any, laser_powermeter = any, laser_coef = 1/40, laser_ref = 6.1e-5, feedback_powermeter=any, resolution_BW_dsh = 0.001, span_ESA_dsh = 20, resolution_BW_full=0.05, span_ESA_full=100, sweepcount=100):
+def single_measurement(measurementname = str, measure_OSA = True, save_plots_data = True, feedback_on = True, delay_length = 3000, modulation_frequency=80, V_pp = 4.4, ESA=any, OSA=any, EOM = any, laser_powermeter = any, laser_coef = 1/40, laser_ref = 6.1e-5, feedback_powermeter=any, resolution_BW_dsh = 0.001, span_ESA_dsh = 20, resolution_BW_full=0.05, span_ESA_full=100, sweepcount=100, voltage_DC=float, temperature = float):
     
     time.sleep(.1)
-    laserPower = laser_powermeter.GetPower()
-    print(laserPower)
-    feedbackPower = feedback_powermeter.GetPower()
-    print(feedbackPower)
-
+    #laserPower = laser_powermeter.GetPower()
+    #print(laserPower)
+    #feedbackPower = feedback_powermeter.GetPower()
+    #print(feedbackPower)
+    
+    '''
     if feedback_on:
-        feedbackRatio = f'{feedback_ratio(laserPower,feedbackPower,laser_ref,laser_coef):.2f} dB' # Setting the laser_reference power equal to the laserpower, as we assume the coupling is as good as it gets (thus making it difficult to know what the relative coupling is)
+        #feedbackRatio = f'{feedback_ratio(laserPower,feedbackPower,laser_ref,laser_coef):.2f} dB' # Setting the laser_reference power equal to the laserpower, as we assume the coupling is as good as it gets (thus making it difficult to know what the relative coupling is)
 
         
-    else: 
-        feedbackRatio = 'None'
+    #else: 
+        #feedbackRatio = 'None'    
+    '''
     
-
+    feedbackRatio = 'None' #Calculating this after
+    laserPower = 'None'   #Getting the laser power from the other process
+    feedbackPower = 'None'
+    
     if measure_OSA:
         data_full_OSA, data_peak_OSA = plot_OSA(OSA, f', EOM on at {modulation_frequency} MHz,feedback_{feedbackRatio} ', measurementname, save_plots_data)
     else:
@@ -293,17 +357,49 @@ def single_measurement(measurementname = str, measure_OSA = True, save_plots_dat
     EOM.output_status(channel=1,status='ON')
     time.sleep(1)
 
+    
+    
+    #laserPower = laser_powermeter.GetPower()
+    #print(laserPower)
+    #feedbackPower = feedback_powermeter.GetPower()
+    #print(feedbackPower)
+    
+    '''
+    if feedback_on:
+        feedbackRatio = f'{feedback_ratio(laserPower,feedbackPower,laser_ref,laser_coef):.2f} dB' # Setting the laser_reference power equal to the laserpower, as we assume the coupling is as good as it gets (thus making it difficult to know what the relative coupling is)
 
-    data_full_ESA_EOM, data_peak_ESA_EOM = plot_ESA(ESA, f', EOM on at {modulation_frequency} MHz, ', measurementname, delay_length, modulation_frequency, V_pp, feedbackRatio, laserPower, laser_ref, feedbackPower, save_plots_data, resolution_BW_dsh, modulation_frequency, span_ESA_dsh, resolution_BW_full, modulation_frequency, span_ESA_full, sweepcount)
+        
+    else: 
+        feedbackRatio = 'None'    
+    '''
+    
+
+
+    data_full_ESA_EOM, data_peak_ESA_EOM = plot_ESA(ESA, f', EOM on at {modulation_frequency} MHz, ', measurementname, delay_length, modulation_frequency, V_pp, feedbackRatio, laserPower, laser_ref, feedbackPower, save_plots_data, resolution_BW_dsh, modulation_frequency, span_ESA_dsh, resolution_BW_full, modulation_frequency, span_ESA_full, sweepcount, voltage_DC, temperature)
 
         
     
     EOM.output_status(channel=1,status='OFF')
     time.sleep(1)
+    
+    
+    #laserPower = laser_powermeter.GetPower()
+    #print(laserPower)
+    #feedbackPower = feedback_powermeter.GetPower()
+    #print(feedbackPower)
+    
+    '''
+    if feedback_on:
+        feedbackRatio = f'{feedback_ratio(laserPower,feedbackPower,laser_ref,laser_coef):.2f} dB' # Setting the laser_reference power equal to the laserpower, as we assume the coupling is as good as it gets (thus making it difficult to know what the relative coupling is)
+
         
+    else: 
+        feedbackRatio = 'None'    
+    '''
+    
     modulation_off = np.nan
 
-    data_full_ESA_off, data_peak_ESA_off = plot_ESA(ESA, ', EOM off', measurementname, delay_length, modulation_off, V_pp, feedbackRatio, laserPower, laser_ref, feedbackPower, save_plots_data, resolution_BW_dsh, modulation_frequency, span_ESA_dsh, resolution_BW_full, modulation_frequency, span_ESA_full, sweepcount)
+    data_full_ESA_off, data_peak_ESA_off = plot_ESA(ESA, ', EOM off', measurementname, delay_length, modulation_off, V_pp, feedbackRatio, laserPower, laser_ref, feedbackPower, save_plots_data, resolution_BW_dsh, modulation_frequency, span_ESA_dsh, resolution_BW_full, modulation_frequency, span_ESA_full, sweepcount, voltage_DC, temperature)
     
     
     plt.figure()
@@ -326,40 +422,45 @@ def save_ESA_plot_file(data=list, sweepcount = int, measurementname=str):
     
     
 
-
-
-    
 #%%
-        
+
+
+
 #Taking single measurement:
 
-
+import Moni_Lab_control as pic
 
 
 TOSA_bool = False
-OSA_bool = True
-ESA_bool =True
+OSA_bool = False
+ESA_bool = True
 EOM_bool = True
-Laser_Powermeter_bool = True
-Feedback_Powermeter_bool = True
+Laser_Powermeter_bool = False
+Feedback_Powermeter_bool = False
 DC_supply_bool = True
 
 [TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source]  = connect_to_instruments(TOSA_bool, OSA_bool, ESA_bool, EOM_bool, Laser_Powermeter_bool, Feedback_Powermeter_bool, DC_supply_bool)
 
 if TOSA_bool:
-    parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 40, soa2curr = 40, ph1curr = 0, ph2curr = 0)
+    parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 60, soa2curr = 60, ph1curr = 0, ph2curr = 0)
+
+
 
 #%%
 
-coupling_treshold = 5.75e-5
+'''
+
+coupling_treshold = 0e-5
 
 if pm100.GetPower() < coupling_treshold:
     print(f'Laser power below coupling threshold: {coupling_treshold*1e6} µW')
     raise SystemExit(0)
 
-
+'''
 
 laser_coef = 1/40 #The ratio of laser power sent into the powermeter 
+
+temperature = 30 #Celcius
 
 
 delay_length = 3000 # m
@@ -375,20 +476,21 @@ resolution_BW_dsh= span_ESA_dsh/20000
 
 resolution_BW_full = span_ESA_full/20000
 
-laser_ref = 5.86e-5  # The reference laser value used in feedback ratio calculation. This is assumed to be the best coupling obtainable.
+laser_ref = 1.4e-5  # The reference laser value used in feedback ratio calculation. This is assumed to be the best coupling obtainable.
 
-save_plots_data = False
+save_plots_data = False# The
 feedback_on = True
-measure_OSA = True
+measure_OSA = False
+
+voltage_DC = 0 #volts
 
 
-volt_source.setParameters(channel=1,voltage=3.2)
+volt_source.setParameters(channel=1,voltage=voltage_DC)
 
 time.sleep(1)
 
 if save_plots_data:
     plt.close('all')
-
 
 
 measurement_name = pic.datetimestring()
@@ -399,19 +501,198 @@ measurement_name = pic.datetimestring()
 if save_plots_data:   
     os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
     data_folder = os.getcwd()
-    sweep_name = pic.datetimestring() + 'single_measurement_'
+    sweep_name = pic.datetimestring() + 'single_measurement'
     old_dir, save_dir = pic.change_folder(data_folder, sweep_name)        
 
 
 
 
-[laserPower, feedbackPower, data_full_OSA, data_peak_OSA, data_full_ESA_EOM, data_peak_ESA_EOM, data_full_ESA_off, data_peak_ESA_off] = single_measurement(measurement_name, measure_OSA, save_plots_data, feedback_on, delay_length, modulation_frequency, V_pp, ESA, OSA, EOM, pm100, laser_coef, laser_ref, pm101_fb, resolution_BW_dsh, span_ESA_dsh,resolution_BW_full ,span_ESA_full, sweepcount)
+[laserPower, feedbackPower, data_full_OSA, data_peak_OSA, data_full_ESA_EOM, data_peak_ESA_EOM, data_full_ESA_off, data_peak_ESA_off] = single_measurement(measurement_name, measure_OSA, save_plots_data, feedback_on, delay_length, modulation_frequency, V_pp, ESA, OSA, EOM, pm100, laser_coef, laser_ref, pm101_fb, resolution_BW_dsh, span_ESA_dsh,resolution_BW_full ,span_ESA_full, sweepcount, voltage_DC, temperature)
 
 if save_plots_data:
     if TOSA_bool:
         np.savetxt('Laser params, power, and feedback power.txt', header = f'Laser power: {laserPower}, \t feedback power: {feedbackPower}, \tLaser params: \n {parameter_string}')
 
 #%%
+
+
+def measurement_process(result_queue, list_of_meas_events, finish_event, finished_optimizing):
+    
+    
+    import Moni_Lab_control as pic
+    import pyvisa as visa
+    
+    TOSA_bool = False
+    OSA_bool = False
+    ESA_bool = True
+    EOM_bool = True
+    Laser_Powermeter_bool = False
+    Feedback_Powermeter_bool = False
+    DC_supply_bool = True
+    
+    [TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source]  = connect_to_instruments(TOSA_bool, OSA_bool, ESA_bool, EOM_bool, Laser_Powermeter_bool, Feedback_Powermeter_bool, DC_supply_bool)
+    
+    if TOSA_bool:
+        parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 60, soa2curr = 60, ph1curr = 0, ph2curr = 0)
+    
+
+    
+    
+    half_no_of_meas = int(len(list_of_meas_events)/2)
+    
+    laser_coef = 1/40 #The ratio of laser power sent into the powermeter 
+
+    temperature = 30 #Celcius
+    
+    
+    delay_length = 3000 # m
+    modulation_frequency = 80 # MHz
+    V_pp = 4.4 # V
+    
+    span_ESA_dsh = 10
+    span_ESA_full = 160
+    sweepcount = 100
+    
+    
+    resolution_BW_dsh= span_ESA_dsh/20000
+    
+    resolution_BW_full = span_ESA_full/20000
+    
+    laser_ref = 3.73e-5  # The reference laser value used in feedback ratio calculation. This is assumed to be the best coupling obtainable.
+    
+    save_plots_data = True# The
+    feedback_on = True
+    measure_OSA = False
+    
+    
+    voltage_DC = np.append(np.linspace(0,5,half_no_of_meas),np.linspace(5,0,half_no_of_meas))  #volts
+    
+    #voltage_DC = np.linspace(0,1,2)                      
+         
+    for i, voltage in enumerate(voltage_DC):
+        
+
+        
+        if save_plots_data:
+            plt.close('all')
+        
+        volt_source.setParameters(channel=1,voltage=voltage)
+    
+        time.sleep(1)
+        
+        measurement_name = pic.datetimestring()
+        if save_plots_data:   
+            os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
+            data_folder = os.getcwd()
+            sweep_name = pic.datetimestring() + 'single_measurement'
+            old_dir, save_dir = pic.change_folder(data_folder, sweep_name)
+            
+            
+        #Waits until finished_optimizing is set to True. When set to True the power readings will be saved. 
+        finished_optimizing.wait() 
+
+        
+        # Perform measurements
+        measurement_result = single_measurement(measurement_name, measure_OSA, save_plots_data, feedback_on, delay_length, modulation_frequency, V_pp, ESA, OSA, EOM, pm100,laser_coef, laser_ref, pm101_fb, resolution_BW_dsh, span_ESA_dsh,resolution_BW_full ,span_ESA_full, sweepcount, voltage, temperature)
+        
+        #Starts the gradient descent optimization in between the measurements. Also stops the power meter readings from being saved.
+        finished_optimizing.clear()
+        
+        
+        #Notifies the other process that a measurement has been taken and it should save the power readings
+        list_of_meas_events[i].set()
+        
+        
+        # Put the measurement result into the queue for the main process
+        result_queue.put(measurement_result)
+        
+    print("Measurement process finished.")
+    finish_event.set()  # Set the finish event after completing all measurements
+    
+    
+    close_connections(TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source)
+
+    
+def lab_setup(start_event, list_of_meas_events, finish_event, add_simple_opt=True):
+    
+    '''
+    Function that starts the optimization process of the coupling
+    Initially it will optimize the coupling using gradient descent (only y- and z-direction).
+    Then a measurement will begin. During the measurement a simple optimization algorithm will be used if add_simple_opt=True.
+    
+    '''
+    
+    sys.path.append("C:/Users/Group Login/Documents/Simon/AU/PICLAB-main/Projects/QVersion/Python_lib")
+
+    import MDT_Example as mdt
+    
+    mdt.open_instruments()
+    
+    if add_simple_opt:
+        mdt.optimize_piezo.optimize_simple(start_event, list_of_meas_events, finish_event, finished_optimizing)
+    
+    else: 
+        mdt.optimize_piezo.optimize_none(start_event, list_of_meas_events, finish_event, finished_optimizing)
+    
+
+
+if __name__ == '__main__':
+    # Create a queue to communicate measurement results back to the main process
+    result_queue = multiprocessing.Queue()
+
+    # Create an event to signal the processes to finish
+    
+    list_of_meas_events = [multiprocessing.Event() for _ in range(52)]
+    
+    start_event =  multiprocessing.Event()
+    
+    finish_event = multiprocessing.Event()
+    
+    finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
+
+    # Define the number of measurements to take
+    #num_measurements = 5
+    
+    
+    # Create and start the lab setup process
+    
+    add_simple_opt = True #True: Allow for simple optimization during measurements, False: A
+    
+    
+    lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(start_event, list_of_meas_events, finish_event, finished_optimizing, add_simple_opt))
+    lab_setup_proc.start()
+
+    time.sleep(10) #Allow time for the optimizer to work
+    start_event.set() #Let the optimizer know, that it should start saving power readings
+    
+    # Create and start the measurement process
+    measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finish_event, finished_optimizing))
+    measurement_proc.start()
+
+    
+    # Wait for the measurement process to finish
+    measurement_proc.join()
+
+    # Wait for the lab setup process to finish
+    lab_setup_proc.join()
+
+    print("All processes finished.")
+
+
+print("All processes finished.")
+
+
+
+
+#Change the OSA we use to ANDO AQ4321, should represent the ANDO AQ6315A OSA
+'''
+
+
+
+
+#%%
+
+'''
 
 pm100.closeConnection()
 pm101_fb.closeConnection()
@@ -425,13 +706,14 @@ volt_source.closeConnection()
 #%%
 
 
+os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
 data_ESA2 = plot_ESA_fast()
 #np.savetxt('..\\Paula_data_ESA_spectrum', data_ESA)
 #plt.savefig('..\\Paula_plot_ESA')
 
 #%%
 
-save_ESA_plot_file(data_ESA2,50,'PD background')
+save_ESA_plot_file(data_ESA2,10,'nice_spectrum')
 
 #%%
 
@@ -439,6 +721,7 @@ save_ESA_plot_file(data_ESA2,50,'PD background')
 #OSA.closeConnection()
 #esa.CloseConnection()
 #gen.CloseConnection()
-pm100.closeConnection()
-pm101_fb.closeConnection()
+#pm100.closeConnection()
+#pm101_fb.closeConnection()
 #volt_source.closeConnection()
+
