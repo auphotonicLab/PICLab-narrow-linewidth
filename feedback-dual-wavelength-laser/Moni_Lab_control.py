@@ -1548,7 +1548,7 @@ class socketInstrument: #developer: Lars Nielsen
 
 # %%
 
-class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
+class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas. Modified by Maria Paula Montes
     """
     - DESCRIPTION:
         This class is for controlling the Yenista OSA20
@@ -1628,6 +1628,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
     
     def ReadSpectrumSimple(self):
         #Leaves OSA scanning parameters untouched
+        #Works better for testing when there is no laser input 
         #Start OSA measurement:
 
         
@@ -1643,7 +1644,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
             waveAxis.append(startTRACE+i*sampTRACE)
         dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
 
-        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+        return np.array([waveAxis, dataOut]) #Return x-axis in nm and y-axis in dBm
 
     def ReadSpectrum(self):
         #Set the OSA scanning parameters:
@@ -1674,7 +1675,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
             waveAxis.append(startTRACE+i*sampTRACE)
         dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
 
-        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+        return [waveAxis, dataOut] #Return x-axis in nm and y-axis in dBm
 
     #### Andreas
 
