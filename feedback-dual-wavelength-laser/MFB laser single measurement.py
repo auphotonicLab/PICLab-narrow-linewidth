@@ -1,3 +1,5 @@
+# PAULA'S VERSIOOOOOON STILL TRYING TO MAKE IT WORK :(
+
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -96,7 +98,7 @@ def connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = True, E
 
     if OSA_bool:
         #OSA = pic.OSA_YOKOGAWA(GPIB_interface=0,channel=7)
-        OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
+        OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=5,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
         res.append(OSA)
     else:
         res.append(0)
@@ -176,137 +178,31 @@ def close_connections(TOSA, OSA, ESA, EOM, Laser_Powermeter, Feedback_Powermeter
         print("DC supply wasn't connected initially")
 
 #%% Function for single measurement.
-
-# class OSA_YOKOGAWA:  # developer: Peter Tønning, modified by Mónica Far
-#     """
-#     - DESCRIPTION:
-#         This class is for controlling the YOKOGAWA OSA
-#         Sensitivity choices (fast to slow): 'normal', 'mid', 'high'
-#     """
-#     def __init__(self,
-#                  sampPoints=10001,
-#                  GPIB_interface=-1,
-#                  IP_address='192.168.1.14',
-#                  channel=1,
-#                  ):
-#         self.samplingpoints = sampPoints
-#         rm = visa.ResourceManager()
-#         # Set GPIB_interface to use GPIB instead of TCP/IP
-#         if GPIB_interface > -1:
-#             interface = str(int(GPIB_interface))
-#             resourceName = 'GPIB' + interface + '::' + str(channel) + '::INSTR'
-#         else:
-#             resourceName = 'TCPIP0::' + IP_address + '::inst0::INSTR'
-#         #print(resourceName)
-#         self.instr = rm.open_resource(resourceName)
-#         # self.instr.open()
-#         alive = self.instr.query('*IDN?')
-
-#         if alive != 0:
-#             print('OSA_YOKOGAWA is alive')
-#             print(alive)
-
-#         self.instr.write("*RST")
-#         self.instr.write("CFORM1")
-#         self.instr.write(':SENSE:SWEEP:POINTS '+str(self.samplingpoints))
-#         self.instr.timeout = 30000
-
-
-#     def SetParameters(self,
-#                       centerWave=1530,
-#                       spanWave=60,
-#                       resolutionBW=0.05,
-#                       dbres=6,
-#                       reflev=-30,
-#                       sensitivity='normal'):
-#         # Set the OSA scanning parameters:
-#         # Center frequency
-#         self.instr.write(':sens:wav:cent '+str(centerWave)+'nm')
-#         # Frequency span
-#         self.instr.write(':sens:wav:span '+str(spanWave)+'nm')
-#         # Resolution bandwidth
-#         self.instr.write(':sens:band '+str(resolutionBW)+'nm')
-#         # Ref level
-#         self.instr.write(':DISPLAY:TRACE:Y1:RLEVEL ' + str(reflev) + 'dbm')
-#         # log scale
-#         self.instr.write(':DISP:TRAC:Y1:PDIV ' +str(dbres))
-#         self.instr.write(":sens:sens "+sensitivity)
-#         # Set sampling points
-#         self.instr.write(':SENSE:SWEEP:POINTS '+str(self.samplingpoints))
-
-#     def ReadSpectrum(self):
-#         # Set the OSA scanning parameters:
-#         # Start OSA measurement:
-#         self.instr.write(":init:smode 1")
-#         self.instr.write("*CLS")
-#         self.instr.write(":init")  
-#         # Wait for 20 seconds or until the measurement is done
-#         count = 0
-#         while int(self.instr.query(':STAT:OPER:even?')) == 0:
-#             time.sleep(1)
-#             count = count+1
-#             if count > 20:
-#                 break
-#         # Initilize parameters for trace fetch:
-#         wav = self.instr.query_ascii_values(':TRACE:X? TRA')
-#         power = self.instr.query_ascii_values(':TRACE:Y? TRA')
-#         return np.array([wav,power])
-    
-#     def setPeaksSearch(self):
-#         # Automatic sweep points
-#         self.instr.write(':SENSE:SWE:POINTS:AUTO ON')
-#         # double sweep speed
-#         self.instr.write(':SENSE:SWE:SPE 2x')
-#         # lower resolution for faster sweep
-#         self.instr.write(':SENSE:BAND 0.2nm')
-#         # 3db peak difference
-#         self.instr.write(':CALC:PAR:COMM:MDIF 3')
-#         # Start OSA measurement:
-#         self.instr.write(":init:smode REP")
-#         self.instr.write("*CLS")
-#         self.instr.write(":init") 
-
-#     def getPeaks(self,single=True):
-#         self.setPeaksSearch()
-#         if single:
-#             self.instr.write(':CALC:MARK:MSE OFF')
-#         else:
-#             self.instr.write(':CALC:MARK:MSE ON')
-#             self.instr.write(':CALC:MARK:MSE:SORT LEV')
-#         self.instr.write(':INIT:SMOD 1')
-#         self.instr.write(":init") 
-#         time.sleep(0.1)
-#         self.instr.write(':CALC:MARK:MAX')
-#         wav = self.instr.query_ascii_values(':CALC:MARK:X? ALL')
-#         power = self.instr.query_ascii_values(':CALC:MARK:Y? ALL')
-#         return np.array([wav,power])
-        
-#     def closeConnection(self):
-#         self.instr.close()
         
 ''' FOR YENISTA OSA20 '''
 
 def OSA_measurement(OSA):
 #OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
     
-    data_full = OSA.ReadSpectrum() #[dataOut,waveAxis] Return x-axis in nm and y-axis in dBm 
+    #data_full = OSA.ReadSpectrum() #[dataOut,waveAxis] Return x-axis in nm and y-axis in dBm
+    data_full = OSA.ReadSpectrumSimple()
     '''
     It is a list so check if it works, if not convert to array :)
     '''
     data_peak = []
     
-    return data, data_peak, resolutionBW
+    return data_full, data_peak, OSA.resolutionBW
 
 def plot_OSA(OSA, measurementname=str, savename=str, save_plots_data=True):
     
     data_full_OSA, data_peak_OSA, resolutionBW = OSA_measurement(OSA)
     
     plt.figure()
-    plt.plot(data_full_OSA[0]*1e9,data_full_OSA[1])
+    plt.plot(data_full_OSA[0],data_full_OSA[1])
     plt.ylabel('OSA Power [dBm]')
     plt.xlabel('Wavelength [nm]')
     plt.title('OSA spectrum')
-    plt.ylim([-80,-20]) # -80, 10
+    #plt.ylim([-90,-20]) # -80, 10
     if save_plots_data:
         plt.savefig(f'.\\{savename}_OSA_full_spectrum{measurementname}.png' )
         np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}.txt',data_full_OSA, header = f'Parameters: resolutionBW = {resolutionBW}')
@@ -569,12 +465,12 @@ import Moni_Lab_control as pic
 
 
 TOSA_bool = False
-OSA_bool = False
-ESA_bool = True
-EOM_bool = True
+OSA_bool = True
+ESA_bool = False
+EOM_bool = False
 Laser_Powermeter_bool = False
 Feedback_Powermeter_bool = False
-DC_supply_bool = True
+DC_supply_bool = False
 
 [TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source]  = connect_to_instruments(TOSA_bool, OSA_bool, ESA_bool, EOM_bool, Laser_Powermeter_bool, Feedback_Powermeter_bool, DC_supply_bool)
 
@@ -615,14 +511,14 @@ resolution_BW_full = span_ESA_full/20000
 
 laser_ref = 1.4e-5  # The reference laser value used in feedback ratio calculation. This is assumed to be the best coupling obtainable.
 
-save_plots_data = False# The
+save_plots_data = False 
 feedback_on = True
 measure_OSA = False
 
 voltage_DC = 0 #volts
 
 
-volt_source.setParameters(channel=1,voltage=voltage_DC)
+#volt_source.setParameters(channel=1,voltage=voltage_DC)
 
 time.sleep(1)
 
@@ -652,6 +548,8 @@ if save_plots_data:
 
 #%%
 
+'''
+# COUPLING OPTIMIZATION
 
 def measurement_process(result_queue, list_of_meas_events, finish_event, finished_optimizing):
     
@@ -804,20 +702,20 @@ print("All processes finished.")
 
 
 #Change the OSA we use to ANDO AQ4321, should represent the ANDO AQ6315A OSA
+
+
+
 '''
-
-
-
 
 #%%
 
-'''
+
 
 pm100.closeConnection()
 pm101_fb.closeConnection()
 
 #TOSA.closeCommunication()
-OSA.closeConnection()
+OSA.CloseConnection()
 ESA.CloseConnection()
 EOM.CloseConnection()
 volt_source.closeConnection()
@@ -825,14 +723,14 @@ volt_source.closeConnection()
 #%%
 
 
-os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
-data_ESA2 = plot_ESA_fast()
+#os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
+#data_ESA2 = plot_ESA_fast()
 #np.savetxt('..\\Paula_data_ESA_spectrum', data_ESA)
 #plt.savefig('..\\Paula_plot_ESA')
 
 #%%
 
-save_ESA_plot_file(data_ESA2,10,'nice_spectrum')
+#save_ESA_plot_file(data_ESA2,10,'nice_spectrum')
 
 #%%
 
