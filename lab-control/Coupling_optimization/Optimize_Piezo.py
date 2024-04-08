@@ -17,6 +17,8 @@ class Optimize_Piezo:
         self.output_piezo_controller = None
         self.instrument_controller = instrument_controller
         self.optimizer = optimizer
+
+        self.first_time_index = 0
         
         self.power_readings = None
         self.feedback_readings = None
@@ -33,6 +35,25 @@ class Optimize_Piezo:
             self.fail_limit = settings_dict["fail_limit"]
             self.min_sample_time = settings_dict["min_sample_time"]
             self.max_sample_time = settings_dict["max_sample_time"]
+
+    def initialize_optimization(self, list_of_meas_events):
+
+        self.time_start = time.strftime("%Y-%m-%d_%H-%M-%S")
+
+        self.input_piezo_controller = self.instrument_controller.input_piezo_controller
+        #self.output_piezo_controller = self.instrument_controller.output_piezo_controller
+        self.target_detector = self.instrument_controller.get_target_detector()
+        self.feedback_detector = self.instrument_controller.get_feedback_detector()
+        
+        self.x_initial = self.input_piezo_controller.get_x_voltage_set()
+
+
+        self.power_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
+        self.feedback_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
+        self.time_stamps = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
+
+        
+
             
             
     def optimize_simple(self, start_event,list_of_meas_events, finish_event, finished_optimizing, optimize_y=True):
@@ -61,7 +82,8 @@ class Optimize_Piezo:
         None.
 
         """
-        self.time_start = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+        self.initialize_optimization(list_of_meas_events)
+        
         
         while not finish_event:
             
@@ -84,7 +106,55 @@ class Optimize_Piezo:
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
         
+    
+    def optimize_none(self, start_event,list_of_meas_events, finish_event, finished_optimizing, optimize_y=True):
+        """
+        Optimization method that uses the advanced optimization algorithm inbetween measurements and nothing during the measurements.
+
+        Parameters
+        ----------
+        start_event : Multiprocessing.Event
+            If .is_set()=True, the measurements have begun and the power and feedback readings are saved in a list.
+            
+        list_of_meas_events : list
+            A list of all measurements events. The amount that has .is_set()=True is equal to the current measurement number.
+            
+        finish_event : Multiprocessing.Event
+            If .is_set()=True, the measurements have stopped and the optimization is told to stop.
+            
+        finished_optimizing: Multiprocessing.Event
+            If .is_set()=False, the advanced optimization algorithm should run. When finished optimizing it changes .is_set()=True and no optimization runs and the power readings are saved. 
+            
+        optimize_y : Boolean, optional
+            If True, the algorithm will move the piezo stage in the +/- y-direction. If false, it will only move the z-direciton.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        self.initialize_optimization(list_of_meas_events)
+
         
+        while not finish_event:
+            
+            self.optimize(start_event,list_of_meas_events, finish_event, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.      
+
+            self.no_algorithm(list_of_meas_events, finished_optimizing)    
+                
+                
+        self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+        try:
+            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+
+        except:
+            np.savetxt(f'{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(f'{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+
+        self.target_detector.closeConnection()
+        self.feedback_detector.closeConnection()
         
         
             
@@ -135,15 +205,8 @@ class Optimize_Piezo:
         None.
 
         '''
-        
-        
-        self.input_piezo_controller = self.instrument_controller.input_piezo_controller
-        #self.output_piezo_controller = self.instrument_controller.output_piezo_controller
-        self.target_detector = self.instrument_controller.get_target_detector()
-        self.feedback_detector = self.instrument_controller.get_feedback_detector()
-        
-        self.x_initial = self.input_piezo_controller.get_x_voltage_set()
-        
+
+       
         initial_point = np.array(
             [self.input_piezo_controller.get_y_voltage_set(),
              self.input_piezo_controller.get_z_voltage_set()])
@@ -156,11 +219,7 @@ class Optimize_Piezo:
         best_point = current_point.copy()
         best_value = current_value
         best_W_value = current_W_value
-        
-        self.power_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-        self.feedback_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-        self.time_stamps = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-
+    
         
         self.meas_start_time =  time.time()
         
@@ -267,20 +326,50 @@ class Optimize_Piezo:
 
             self.save_power_readings(list_of_meas_events, while_current_power, while_current_feedback)
 
+    def no_algorithm(self, list_of_meas_events, finished_optimizing):
+        
+        '''
+        This is only for saving power readings and it keeps going until finished_optimizing.is_set()=False, which the measurement process will do.
+        
+
+        Parameters
+        ----------
+        start_event : Multiprocessing.Event
+            If .is_set()=True, the measurements have begun and the power and feedback readings are saved in a list.
+            
+        list_of_meas_events : list
+            A list of all measurements events. The amount that has .is_set()=True is equal to the current measurement number.
+            
+        finish_event : Multiprocessing.Event
+            If .is_set()=True, the measurements have stopped and the optimization is told to stop.
+            
+        optimize_y : Boolean, optional
+            If True, the algorithm will move the piezo stage in the +/- y-direction. If false, it will only move the z-direciton.
+
+        Returns
+        -------
+        None.
+        '''
+
+        while finished_optimizing.is_set():
+            
+            current_power = self.target_detector.GetPower()
+            current_feedback = self.feedback_detector.GetPower()
+            
+            self.save_power_readings(list_of_meas_events, current_power, current_feedback)
+
+            time.sleep(0.2)
+            
+ 
+            
+
 
     def optimize(self, start_event,list_of_meas_events, finish_event, finished_optimizing):
         
         #Should probably be closer to the original thing Magnus made.
         
-        
-        
+
         self.fail_counter = 0
-        self.input_piezo_controller = self.instrument_controller.input_piezo_controller
-        #self.output_piezo_controller = self.instrument_controller.output_piezo_controller
-        self.target_detector = self.instrument_controller.get_target_detector()
-        self.feedback_detector = self.instrument_controller.get_feedback_detector()
-        
-        self.x_initial = self.input_piezo_controller.get_x_voltage_set()
         
         initial_point = np.array(
             [self.input_piezo_controller.get_y_voltage_set(),
@@ -295,22 +384,16 @@ class Optimize_Piezo:
         best_value = current_value
         best_W_value = current_W_value
         
-        self.power_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-        self.feedback_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-
-        
-        self.time_start =  [time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()), time.time()]
         
         index = 0
-        while not finished_optimizing:
+
+        while not finished_optimizing.is_set():
             
             #for index in range(int(self.iterations)):
             # Estimate the gradient at the current point
             
             current_power = self.target_detector.GetPower()
-            current_feedback = self.feedback_detector.GetPower()
-
-            
+           
             
             if current_power < 3.62e-05:
                 
@@ -324,10 +407,6 @@ class Optimize_Piezo:
                 while_index = 0
                 
                 while_current_power = self.target_detector.GetPower()
-                while_current_feedback = self.feedback_detector.GetPower()
-
-                self.save_power_readings(start_event, list_of_meas_events, while_current_power, while_current_feedback)
-
             
                 while while_current_power < 3.62e-05:
             
@@ -336,16 +415,11 @@ class Optimize_Piezo:
                     new_point[0] = np.clip(new_point[0], 0, 75)
                     new_point[1] = np.clip(new_point[1], 0, 75)
     
-                   
-                    for i in range(len(power_list)):
-                        self.save_power_readings(start_event, list_of_meas_events, power_list[i], feedback_list[i])
-                    
+
                     [new_value,new_W_value, new_feedback] = self.compute_function_value(new_point)
         
                     print("New Point: ", new_point)
                     
-                    self.save_power_readings(start_event, list_of_meas_events, new_W_value, new_feedback)
-
                     
                     # Update the best point if the new point has a lower function value
                     if new_value < best_value:
@@ -379,25 +453,12 @@ class Optimize_Piezo:
                     while_index +=1
                     
                     while_current_power = self.target_detector.GetPower()
-                    while_current_feedback = self.feedback_detector.GetPower()
-
-                    self.save_power_readings(start_event, list_of_meas_events, while_current_power, while_current_feedback)
-        
+       
                 self.set_point(best_point)
                 
                 index += 1
-         
-        self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-        try:
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'time start {self.time_start}, time end {self.time_end}')
 
-        except:
-            np.savetxt(f'{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'time start {self.time_start}, time end {self.time_end}')
 
-        self.target_detector.closeConnection()
-        self.feedback_detector.closeConnection()
 
     def set_point(self, point):
         self.input_piezo_controller.set_yz_voltage(self.x_initial, point[0], point[1])
