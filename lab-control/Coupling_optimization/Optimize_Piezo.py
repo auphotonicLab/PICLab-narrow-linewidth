@@ -18,6 +18,8 @@ class Optimize_Piezo:
         self.instrument_controller = instrument_controller
         self.optimizer = optimizer
 
+        self.bool_save_readings = None
+
         self.first_time_index = 0
         
         self.power_readings = None
@@ -83,6 +85,10 @@ class Optimize_Piezo:
 
         """
         self.initialize_optimization(list_of_meas_events)
+
+        
+        self.bool_save_readings = None
+
         
         
         while not finish_event:
@@ -91,7 +97,7 @@ class Optimize_Piezo:
                 
             self.simple_algorithm(list_of_meas_events, finished_optimizing)
                 
-                
+
                 
                 
         self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
@@ -326,6 +332,7 @@ class Optimize_Piezo:
 
             self.save_power_readings(list_of_meas_events, while_current_power, while_current_feedback)
 
+
     def no_algorithm(self, list_of_meas_events, finished_optimizing):
         
         '''
@@ -361,13 +368,60 @@ class Optimize_Piezo:
             time.sleep(0.2)
             
  
-            
 
 
     def optimize(self, start_event,list_of_meas_events, finish_event, finished_optimizing):
         
         #Should probably be closer to the original thing Magnus made.
-        
+
+
+        for index in range(self.iterations):
+            # Estimate the gradient at the current point
+            new_point = self.optimizer.update(self.compute_function_value, current_point, current_value, index,
+                                              self.fail_counter)
+            new_point[0] = np.clip(new_point[0], 0, 120)
+            new_point[1] = np.clip(new_point[1], 0, 120)
+            new_point[2] = np.clip(new_point[2], 0, 120)
+            new_point[3] = np.clip(new_point[3], 0, 120)
+            new_point[4] = np.clip(new_point[4], 0, 120)
+            new_point[5] = np.clip(new_point[5], 0, 120)
+            new_value = self.compute_function_value(new_point)
+
+            print("New Point: ", new_point)
+
+            # Update the best point if the new point has a lower function value
+            if new_value < best_value:
+                self.fail_counter = 0
+                best_point = new_point
+                best_value = new_value
+            else:
+                if new_value > current_value:
+                    print("fail")
+                    self.fail_counter = self.fail_counter + 1
+
+            if self.fail_counter >= self.fail_limit:
+                print("fail_counter")
+                break
+
+            if not self.optimize_bool:
+                break
+
+            print("New value: ", new_value, "Best value: ", best_value)
+
+            # Check for convergence based on absolute and relative tolerances
+            change = np.linalg.norm(new_value - current_value)
+            if change < self.abs_tol:
+                print("tolerance")
+                break
+
+            current_point = new_point
+            current_value = new_value
+
+        self.set_point(best_point)
+
+
+
+        #######################################################
 
         self.fail_counter = 0
         
@@ -377,13 +431,22 @@ class Optimize_Piezo:
         
         print(f'This is the initial point {[self.x_initial,initial_point[0],initial_point[1]]}')
         current_point = initial_point.copy()
-        [current_value,current_W_value, current_feedback_value] = self.compute_function_value(current_point)
+        [current_value,current_W_value, _] = self.compute_function_value(current_point, meas_feedback=False) #Don't care about feedback here
         
-                
+        
         best_point = current_point.copy()
         best_value = current_value
         best_W_value = current_W_value
+
+        ##### Here the optimization should happen:
         
+        if save_power_readings:
+            current_power = self.target_detector.GetPower()
+            current_feedback = self.feedback_detector.GetPower()
+
+            self.save_power_readings(list_of_meas_events,current_power,current_feedback)
+
+
         
         index = 0
 
@@ -392,22 +455,22 @@ class Optimize_Piezo:
             #for index in range(int(self.iterations)):
             # Estimate the gradient at the current point
             
-            current_power = self.target_detector.GetPower()
-           
-            
-            if current_power < 3.62e-05:
-                
-                self.fail_counter = 0
-                if not index == 0:                
-                
-                    best_W_value = best_W_value*0.98
-                    best_value = -power_W_to_dBm(best_W_value)
-    
+                if save_power_readings:
+                    current_power = self.target_detector.GetPower()
+                    current_feedback = self.feedback_detector.GetPower()
+
+                    self.save_power_readings(list_of_meas_events,current_power,current_feedback)
+        
                 
                 while_index = 0
                 
                 while_current_power = self.target_detector.GetPower()
-            
+
+                if save_power_readings:
+                    while_current_feedback = self.feedback_detector.GetPower()
+                    self.save_power_readings(start_event, list_of_meas_events, while_current_power, while_current_feedback)
+
+
                 while while_current_power < 3.62e-05:
             
                     new_point, power_list, feedback_list = self.optimizer.update(self.compute_function_value, current_point, current_value, while_index,
@@ -416,7 +479,10 @@ class Optimize_Piezo:
                     new_point[1] = np.clip(new_point[1], 0, 75)
     
 
-                    [new_value,new_W_value, new_feedback] = self.compute_function_value(new_point)
+                    for i in range(len(power_list)):
+                        self.save_power_readings(start_event, list_of_meas_events, power_list[i], feedback_list[i])
+
+                    [new_value,new_W_value, _] = self.compute_function_value(new_point)
         
                     print("New Point: ", new_point)
                     
@@ -471,12 +537,14 @@ class Optimize_Piezo:
         #output_set_thread.join()
 
 
-    def compute_function_value(self, point):
+    def compute_function_value(self, point, meas_feedback=True):
         self.set_point(point)
         time.sleep(0.001)
         value = self.target_detector.GetPower()
         
-        feedback = self.feedback_detector.GetPower()
+        feedback = None
+        if meas_feedback:
+            feedback = self.feedback_detector.GetPower()
         
         #print(f'this is the measurement: {value}')
         res = - power_W_to_dBm(value)
