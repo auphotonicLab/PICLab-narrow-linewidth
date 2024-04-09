@@ -1,7 +1,7 @@
 import json
 
 import matplotlib.pyplot as plt
-from GUI.Functions.functions import *
+from GUI.Functions.functions import power_W_to_dBm
 import time
 
 class Optimize_Piezo:
@@ -18,10 +18,7 @@ class Optimize_Piezo:
         self.instrument_controller = instrument_controller
         self.optimizer = optimizer
 
-        self.bool_save_readings = None
-
-        self.first_time_index = 0
-        
+        self.meas_feedback_bool = None   #Remember to change this, if wanting to measure feedback power in "compute_function_value" method
         self.power_readings = None
         self.feedback_readings = None
         
@@ -38,6 +35,7 @@ class Optimize_Piezo:
             self.min_sample_time = settings_dict["min_sample_time"]
             self.max_sample_time = settings_dict["max_sample_time"]
 
+
     def initialize_optimization(self, list_of_meas_events):
 
         self.time_start = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -50,13 +48,60 @@ class Optimize_Piezo:
         self.x_initial = self.input_piezo_controller.get_x_voltage_set()
 
 
-        self.power_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-        self.feedback_readings = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
-        self.time_stamps = [[] for _ in range(len(list_of_meas_events)+1)] #The last one is not used, but is needed, as there is a short time between finishing the last measurement and finishing the total
+        self.power_readings = [[] for _ in range(len(list_of_meas_events))]
+        self.feedback_readings = [[] for _ in range(len(list_of_meas_events))]
+        self.time_stamps = [[] for _ in range(len(list_of_meas_events))]
 
+                
+    def check_measurement_number(self,list_of_meas_events):
         
+        meas_no = 0
+        for meas_event in list_of_meas_events:
+            if meas_event.is_set():
+                meas_no += 1
+                
+        return meas_no
+    
+    def save_power_readings(self, list_of_meas_events, laser_power, feedback_power):
+        
+            meas_no = self.check_measurement_number(list_of_meas_events)
 
-            
+            self.time_stamps[meas_no].append(time.time()-self.meas_time_start)
+            self.power_readings[meas_no].append(laser_power)
+            self.feedback_readings[meas_no].append(feedback_power)
+
+
+    def set_point(self, point):
+        self.input_piezo_controller.set_yz_voltage(self.x_initial, point[0], point[1])
+        #self.output_piezo_controller.set_xyz_voltage(point[3], point[4], point[5])
+        #input_set_thread = threading.Thread(target=self.input_piezo_controller.set_xyz_voltage, args =[point[0], point[1], point[2]])
+        #output_set_thread = threading.Thread(target=self.output_piezo_controller.set_xyz_voltage, args=[point[3], point[4], point[5]])
+        #input_set_thread.start()
+        #output_set_thread.start()
+        #input_set_thread.join()
+        #output_set_thread.join()
+
+
+    def compute_function_value(self, point):
+        self.set_point(point)
+        time.sleep(0.001)
+        value = self.target_detector.GetPower()
+        
+        feedback = None
+        if self.meas_feedback_bool:
+            feedback = self.feedback_detector.GetPower()
+        
+        #print(f'this is the measurement: {value}')
+        res = - power_W_to_dBm(value)
+        #print(f'this is the optimiziation value: {res}')
+        return [res, value, feedback]
+
+    def set_optimize_bool(self, optimize_bool):
+        self.optimize_bool = optimize_bool
+
+
+
+
             
     def optimize_simple(self, start_event,list_of_meas_events, finish_event, finished_optimizing, optimize_y=True):
         """
@@ -86,15 +131,16 @@ class Optimize_Piezo:
         """
         self.initialize_optimization(list_of_meas_events)
 
-        
-        self.bool_save_readings = None
 
         
         
-        while not finish_event:
-            
+        for _ in range(len(list_of_meas_events)):
+
+
+            self.meas_feedback_bool = False
             self.optimize(start_event,list_of_meas_events, finish_event, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.
-                
+            
+            self.meas_feedback_bool = True
             self.simple_algorithm(list_of_meas_events, finished_optimizing)
                 
 
@@ -143,11 +189,15 @@ class Optimize_Piezo:
         self.initialize_optimization(list_of_meas_events)
 
         
-        while not finish_event:
-            
+        for _ in range(len(list_of_meas_events)): #Could include an index and ditch the "check_meas_no" method.
+
+            self.meas_feedback_bool = False
             self.optimize(start_event,list_of_meas_events, finish_event, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.      
 
-            self.no_algorithm(list_of_meas_events, finished_optimizing)    
+            self.meas_feedback_bool = True
+            self.no_algorithm(list_of_meas_events, finished_optimizing)
+
+
                 
                 
         self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
@@ -161,25 +211,6 @@ class Optimize_Piezo:
 
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
-        
-        
-            
-    def check_measurement_number(self,list_of_meas_events):
-        
-        meas_no = 0
-        for meas_event in list_of_meas_events:
-            if meas_event.is_set():
-                meas_no += 1
-                
-        return meas_no
-    
-    def save_power_readings(self, list_of_meas_events, laser_power, feedback_power):
-        
-            meas_no = self.check_measurement_number(list_of_meas_events)
-
-            self.time_stamps[meas_no].append(time.time()-self.meas_time_start)
-            self.power_readings[meas_no].append(laser_power)
-            self.feedback_readings[meas_no].append(feedback_power)
             
     
     
@@ -431,7 +462,7 @@ class Optimize_Piezo:
         
         print(f'This is the initial point {[self.x_initial,initial_point[0],initial_point[1]]}')
         current_point = initial_point.copy()
-        [current_value,current_W_value, _] = self.compute_function_value(current_point, meas_feedback=False) #Don't care about feedback here
+        [current_value,current_W_value, _] = self.compute_function_value(current_point) #Don't care about feedback here
         
         
         best_point = current_point.copy()
@@ -523,36 +554,6 @@ class Optimize_Piezo:
                 self.set_point(best_point)
                 
                 index += 1
-
-
-
-    def set_point(self, point):
-        self.input_piezo_controller.set_yz_voltage(self.x_initial, point[0], point[1])
-        #self.output_piezo_controller.set_xyz_voltage(point[3], point[4], point[5])
-        #input_set_thread = threading.Thread(target=self.input_piezo_controller.set_xyz_voltage, args =[point[0], point[1], point[2]])
-        #output_set_thread = threading.Thread(target=self.output_piezo_controller.set_xyz_voltage, args=[point[3], point[4], point[5]])
-        #input_set_thread.start()
-        #output_set_thread.start()
-        #input_set_thread.join()
-        #output_set_thread.join()
-
-
-    def compute_function_value(self, point, meas_feedback=True):
-        self.set_point(point)
-        time.sleep(0.001)
-        value = self.target_detector.GetPower()
-        
-        feedback = None
-        if meas_feedback:
-            feedback = self.feedback_detector.GetPower()
-        
-        #print(f'this is the measurement: {value}')
-        res = - power_W_to_dBm(value)
-        #print(f'this is the optimiziation value: {res}')
-        return [res, value, feedback]
-
-    def set_optimize_bool(self, optimize_bool):
-        self.optimize_bool = optimize_bool
 
 
 class Optimizer_Gradient_Descent:

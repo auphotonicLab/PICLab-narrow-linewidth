@@ -18,7 +18,7 @@ def del_o(del_f):
     """
     return 2*np.pi*del_f
 
-def time_delay(self, fiber_length):
+def time_delay(fiber_length):
     """Booklet definition of time delay"""
     c = 299792458 #m/s speed of light
     L = fiber_length
