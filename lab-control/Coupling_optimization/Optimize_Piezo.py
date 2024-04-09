@@ -130,10 +130,30 @@ class Optimize_Piezo:
         self.optimize_bool = optimize_bool
 
 
+    def save_files(self, pipe_receiver):
+
+        self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+
+        index, path = pipe_receiver.recv()
+
+        try:
+            np.savetxt(f'{path}\\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(f'{path}\\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time]  during measurements \t time start {self.time_start}, time end {self.time_end}')
+
+            np.savetxt(f'{path}\\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s', header = f'[Power,time] readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
+
+        except:
+            
+            np.savetxt(fr'{path}\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements, [power, time] pr. line \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(fr'{path}\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements [power, time] \t time start {self.time_start}, time end {self.time_end}')
+
+            np.savetxt(fr'{path}\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s', header = f'[Power,time] readings during advanced optimization algorithm [power,time] \t time start {self.time_start}, time end {self.time_end}')
+
+
 
 
             
-    def optimize_simple(self, start_event,list_of_meas_events, finish_event, finished_optimizing, optimize_y=True):
+    def optimize_simple(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, optimize_y=True):
         """
         Optimization method that uses the advanced optimization algorithm inbetween measurements and then uses the simple algorithm during the measurements.
 
@@ -172,33 +192,17 @@ class Optimize_Piezo:
             
             self.meas_feedback_bool = True
             self.simple_algorithm(list_of_meas_events, finished_optimizing)
-                
 
-                
-                
-        self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-        try:
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Time_stamps.txt', self.time_stamps, fmt='%s', header = f'Time stamps for simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+            self.save_files(pipe_receiver)
 
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Adv_laser_power_readings.txt', self.adv_power_readings, fmt='%s', header = f'Power readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Adv_time_stamps.txt', self.adv_time_stamps, fmt='%s', header = f'Time stamps for advanced algorithm \t time start {self.time_start}, time end {self.time_end}')
+            saved_the_data.set()
 
-
-        except:
-            np.savetxt(f'{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Time_stamps.txt', self.time_stamps, fmt='%s', header = f'Time stamps for simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-
-            np.savetxt(f'{self.time_start}_Adv_laser_power_readings.txt', self.adv_power_readings, fmt='%s', header = f'Power readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Adv_time_stamps.txt', self.adv_time_stamps, fmt='%s', header = f'Time stamps for advanced algorithm \t time start {self.time_start}, time end {self.time_end}')
-
+            
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
         
     
-    def optimize_none(self, start_event,list_of_meas_events, finish_event, finished_optimizing, optimize_y=True):
+    def optimize_none(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, optimize_y=True):
         """
         Optimization method that uses the advanced optimization algorithm inbetween measurements and nothing during the measurements.
 
@@ -236,26 +240,10 @@ class Optimize_Piezo:
             self.meas_feedback_bool = True
             self.no_algorithm(list_of_meas_events, finished_optimizing)
 
+            self.save_files(pipe_receiver)
 
-                
-                
-        self.time_end = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-        try:
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Time_stamps.txt', self.time_stamps, fmt='%s', header = f'Time stamps for simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
+            saved_the_data.set()
 
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Adv_laser_power_readings.txt', self.adv_power_readings, fmt='%s', header = f'Power readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'C:\Users\Group Login\Documents\Simon\measurementData3\Measurements_{self.time_start[:10]}\{self.time_start}_Adv_time_stamps.txt', self.adv_time_stamps, fmt='%s', header = f'Time stamps for advanced algorithm \t time start {self.time_start}, time end {self.time_end}')
-
-
-        except:
-            np.savetxt(f'{self.time_start}_Laser_power_readings.txt', self.power_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Feedback_power_readings.txt', self.feedback_readings, fmt='%s', header = f'Simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Time_stamps.txt', self.time_stamps, fmt='%s', header = f'Time stamps for simple algorithm during measurements \t time start {self.time_start}, time end {self.time_end}')
-
-            np.savetxt(f'{self.time_start}_Adv_laser_power_readings.txt', self.adv_power_readings, fmt='%s', header = f'Power readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{self.time_start}_Adv_time_stamps.txt', self.adv_time_stamps, fmt='%s', header = f'Time stamps for advanced algorithm \t time start {self.time_start}, time end {self.time_end}')
 
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
