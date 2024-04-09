@@ -586,8 +586,26 @@ def measurement_process(result_queue, list_of_meas_events, finish_event, finishe
             data_folder = os.getcwd()
             sweep_name = pic.datetimestring() + 'single_measurement'
             old_dir, save_dir = pic.change_folder(data_folder, sweep_name)
-            
-            
+
+            '''
+
+            change_folder(my_path, data_folder_name)
+            try:
+                my_directory_aux = os.path.join(my_path,
+                                                'Measurements_' + datestring())
+                my_directory = os.path.join (my_directory_aux, data_folder_name)
+                os.makedirs(my_directory, exist_ok = True)
+                print("Your data will be saved in: '%s'\n" % my_directory)
+                os.chdir(my_directory)
+            except OSError as error:
+                print(error)
+                print("Folder '%s' cannot be created" % my_directory)
+                pass
+            return old_directory, my_directory
+        
+            '''
+
+        
         #Waits until finished_optimizing is set to True. When set to True the power readings will be saved. 
         finished_optimizing.wait() 
 
@@ -662,7 +680,7 @@ if __name__ == '__main__':
     lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(start_event, list_of_meas_events, finish_event, finished_optimizing, add_simple_opt))
     lab_setup_proc.start()
 
-    time.sleep(10) #Allow time for the optimizer to work
+    #time.sleep(10) #Allow time for the optimizer to work
     start_event.set() #Let the optimizer know, that it should start saving power readings
     
     # Create and start the measurement process
