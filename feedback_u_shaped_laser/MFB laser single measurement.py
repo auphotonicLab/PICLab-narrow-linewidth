@@ -22,11 +22,6 @@ rm = visa.ResourceManager()
 
 print(rm.list_resources())
 
-#%%
-import Moni_Lab_control as pic
-
-OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
-
 
 #%%
 
@@ -177,70 +172,101 @@ def close_connections(TOSA, OSA, ESA, EOM, Laser_Powermeter, Feedback_Powermeter
 
 #%% Function for single measurement.
 
+'''For Yenista OSA'''
 
 def OSA_measurement(OSA):
-
-
-    spanwav_full = 500 #50
-    spanwav_peak = 20
-    resolution_full = 0.5 # 0.2 dual WL
-    resolution_peak = 0.02
-    dbres = 107
-    reflev = -5
-    OSA.SetParameters(centerWave=1550, #1530
-                      spanWave=spanwav_full,
-                      resolutionBW=resolution_full,
-                      dbres=dbres,
-                      reflev=reflev,
-                      sensitivity='normal')
-    data_full = OSA.ReadSpectrum()
-
-
-    prelim_wav = data_full[0,:]
-    prelim_pow = data_full[1,:]
-    center_wav_osa_aux = prelim_wav[prelim_pow == max(prelim_pow )]
-      
-    center_wav_osa = center_wav_osa_aux[0]*1e9
-    '''
-    OSA.SetParameters(centerWave=center_wav_osa,
-                      spanWave=spanwav_peak,
-                      resolutionBW=resolution_peak,
-                      dbres=dbres,
-                      reflev=reflev,
-                      sensitivity='normal')
-    '''
-    data_peak = [] #OSA.ReadSpectrum()
+#OSA = pic.OSA_YENISTA_OSA20(GPIB_interface=-1,spanWave=60,centerWave=1535,resolutionBW=0.05,sensitivity=5,ip_address='192.168.1.3',tcp_port=5025)
     
-    return data_full, data_peak, dbres, reflev, resolution_full, resolution_peak
-
+    #data_full = OSA.ReadSpectrum() #[dataOut,waveAxis] Return x-axis in nm and y-axis in dBm
+    data_full = OSA.ReadSpectrumSimple()
+    '''
+    It is a list so check if it works, if not convert to array :)
+    '''
+    data_peak = []
+    
+    return data_full, data_peak, OSA.resolutionBW
 
 def plot_OSA(OSA, measurementname=str, savename=str, save_plots_data=True):
     
-    data_full_OSA, data_peak_OSA, dbres, reflev, resolution_full, resolution_peak = OSA_measurement(OSA)
+    data_full_OSA, data_peak_OSA, resolutionBW = OSA_measurement(OSA)
     
     plt.figure()
-    plt.plot(data_full_OSA[0]*1e9,data_full_OSA[1])
+    plt.plot(data_full_OSA[0],10*np.log10(data_full_OSA[1])+30)
     plt.ylabel('OSA Power [dBm]')
     plt.xlabel('Wavelength [nm]')
     plt.title('OSA spectrum')
-    plt.ylim([-80,-20]) # -80, 10
+    #plt.ylim([-90,-20]) # -80, 10
     if save_plots_data:
         plt.savefig(f'.\\{savename}_OSA_full_spectrum{measurementname}.png' )
-        np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}.txt',data_full_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_full}')
+        np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}.txt',data_full_OSA, header = f'Parameters: resolutionBW = {resolutionBW}')
 
-    '''
-    plt.figure()
-    plt.plot(data_peak_OSA[0]*1e9,data_peak_OSA[1])
-    plt.ylabel('OSA Power [dBm]')
-    plt.xlabel('Wavelength [nm]')
-    plt.title('OSA spectrum ' + measurementname)
-    plt.ylim([-80,10])
-
-    if save_plots_data:
-        plt.savefig('.\\OSA_peak_spectrum_' + measurementname)
-        np.savetxt(f'.\\OSA_peak_spectrum_' + {measurementname}.txt,data_peak_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_peak}')
-    '''
     return data_full_OSA, data_peak_OSA
+
+
+'''For Yokogawa OSA'''
+# def OSA_measurement(OSA):
+
+
+#     spanwav_full = 500 #50
+#     spanwav_peak = 20
+#     resolution_full = 0.5 # 0.2 dual WL
+#     resolution_peak = 0.02
+#     dbres = 107
+#     reflev = -5
+#     OSA.SetParameters(centerWave=1550, #1530
+#                       spanWave=spanwav_full,
+#                       resolutionBW=resolution_full,
+#                       dbres=dbres,
+#                       reflev=reflev,
+#                       sensitivity='normal')
+#     data_full = OSA.ReadSpectrum()
+
+
+#     prelim_wav = data_full[0,:]
+#     prelim_pow = data_full[1,:]
+#     center_wav_osa_aux = prelim_wav[prelim_pow == max(prelim_pow )]
+      
+#     center_wav_osa = center_wav_osa_aux[0]*1e9
+#     '''
+#     OSA.SetParameters(centerWave=center_wav_osa,
+#                       spanWave=spanwav_peak,
+#                       resolutionBW=resolution_peak,
+#                       dbres=dbres,
+#                       reflev=reflev,
+#                       sensitivity='normal')
+#     '''
+#     data_peak = [] #OSA.ReadSpectrum()
+    
+#     return data_full, data_peak, dbres, reflev, resolution_full, resolution_peak
+
+
+# def plot_OSA(OSA, measurementname=str, savename=str, save_plots_data=True):
+    
+#     data_full_OSA, data_peak_OSA, dbres, reflev, resolution_full, resolution_peak = OSA_measurement(OSA)
+    
+#     plt.figure()
+#     plt.plot(data_full_OSA[0]*1e9,data_full_OSA[1])
+#     plt.ylabel('OSA Power [dBm]')
+#     plt.xlabel('Wavelength [nm]')
+#     plt.title('OSA spectrum')
+#     plt.ylim([-80,-20]) # -80, 10
+#     if save_plots_data:
+#         plt.savefig(f'.\\{savename}_OSA_full_spectrum{measurementname}.png' )
+#         np.savetxt(f'.\\{savename}_OSA_full_spectrum{measurementname}.txt',data_full_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_full}')
+
+#     '''
+#     plt.figure()
+#     plt.plot(data_peak_OSA[0]*1e9,data_peak_OSA[1])
+#     plt.ylabel('OSA Power [dBm]')
+#     plt.xlabel('Wavelength [nm]')
+#     plt.title('OSA spectrum ' + measurementname)
+#     plt.ylim([-80,10])
+
+#     if save_plots_data:
+#         plt.savefig('.\\OSA_peak_spectrum_' + measurementname)
+#         np.savetxt(f'.\\OSA_peak_spectrum_' + {measurementname}.txt,data_peak_OSA, header = f'Parameters: dbres={dbres}, reflev = {reflev}, resolutionBW = {resolution_peak}')
+#     '''
+#     return data_full_OSA, data_peak_OSA
 
 
 
@@ -424,7 +450,7 @@ def save_ESA_plot_file(data=list, sweepcount = int, measurementname=str):
 
 #%%
 
-
+'''
 
 #Taking single measurement:
 
@@ -444,7 +470,7 @@ DC_supply_bool = True
 if TOSA_bool:
     parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 60, soa2curr = 60, ph1curr = 0, ph2curr = 0)
 
-
+'''
 
 #%%
 
@@ -516,7 +542,7 @@ if save_plots_data:
 #%%
 
 
-def measurement_process(result_queue, list_of_meas_events, finish_event, finished_optimizing, pipe_sender, saved_the_data):
+def measurement_process(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type):
     
     
     import Moni_Lab_control as pic
@@ -585,27 +611,15 @@ def measurement_process(result_queue, list_of_meas_events, finish_event, finishe
             os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
             data_folder = os.getcwd()
             sweep_name = pic.datetimestring() + 'single_measurement'
-            old_dir, save_dir = pic.change_folder(data_folder, sweep_name)
+            
+            old_dir, save_dir = pic.change_folder(data_folder, sweep_name, meas_type)
 
 
-            pipe_sender.send((i, save_dir)) #Sending both the index and the 
-            '''
 
-            change_folder(my_path, data_folder_name)
-            try:
-                my_directory_aux = os.path.join(my_path,
-                                                'Measurements_' + datestring())
-                my_directory = os.path.join (my_directory_aux, data_folder_name)
-                os.makedirs(my_directory, exist_ok = True)
-                print("Your data will be saved in: '%s'\n" % my_directory)
-                os.chdir(my_directory)
-            except OSError as error:
-                print(error)
-                print("Folder '%s' cannot be created" % my_directory)
-                pass
-            return old_directory, my_directory
+
+            pipe_sender.send((i, save_dir)) #Sending both the index and the save directory
         
-            '''
+            
 
         
         #Waits until finished_optimizing is set to True. When set to True the power readings will be saved. 
@@ -634,14 +648,12 @@ def measurement_process(result_queue, list_of_meas_events, finish_event, finishe
 
 
         
-    print("Measurement process finished.")
-    finish_event.set()  # Set the finish event after completing all measurements
-    
+    print("Measurement process finished.")    
     
     close_connections(TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source)
 
     
-def lab_setup(start_event, list_of_meas_events, finish_event, pipe_receiver, saved_the_data, add_simple_opt=True):
+def lab_setup(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt=True):
     
     '''
     Function that starts the optimization process of the coupling
@@ -657,10 +669,10 @@ def lab_setup(start_event, list_of_meas_events, finish_event, pipe_receiver, sav
     mdt.open_instruments()
     
     if add_simple_opt:
-        mdt.optimize_piezo.optimize_simple(start_event, list_of_meas_events, finish_event, finished_optimizing, pipe_receiver, saved_the_data)
+        mdt.optimize_piezo.optimize_simple(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data)
     
     else: 
-        mdt.optimize_piezo.optimize_none(start_event, list_of_meas_events, finish_event, finished_optimizing, pipe_receiver, saved_the_data)
+        mdt.optimize_piezo.optimize_none(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data)
     
 
 
@@ -670,7 +682,7 @@ if __name__ == '__main__':
 
     # Create an event to signal the processes to finish
     
-    list_of_meas_events = [multiprocessing.Event() for _ in range(52)]
+    list_of_meas_events = [multiprocessing.Event() for _ in range(22)]
     
     finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
 
@@ -682,14 +694,14 @@ if __name__ == '__main__':
     # Create and start the lab setup process
     
     add_simple_opt = True #True: Allow for simple optimization during measurements, False: No optimization during measurements
-    
+    meas_type = 'Agilent_simple_opt_' #Add name for the save folder for this run of measurements
     
     lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt))
     lab_setup_proc.start()
 
 
     # Create and start the measurement process
-    measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data))
+    measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type))
     measurement_proc.start()
 
     
@@ -707,24 +719,11 @@ print("All processes finished.")
 
 
 
-#Change the OSA we use to ANDO AQ4321, should represent the ANDO AQ6315A OSA
-'''
-
-
-
 
 #%%
 
 '''
 
-pm100.closeConnection()
-pm101_fb.closeConnection()
-
-#TOSA.closeCommunication()
-OSA.closeConnection()
-ESA.CloseConnection()
-EOM.CloseConnection()
-volt_source.closeConnection()
 
 #%%
 
@@ -747,4 +746,4 @@ save_ESA_plot_file(data_ESA2,10,'nice_spectrum')
 #pm100.closeConnection()
 #pm101_fb.closeConnection()
 #volt_source.closeConnection()
-
+'''
