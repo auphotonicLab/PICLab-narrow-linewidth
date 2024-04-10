@@ -1,6 +1,6 @@
 import json
 
-import matplotlib.pyplot as plt
+import numpy as np
 from GUI.Functions.functions import power_W_to_dBm
 import time
 
@@ -52,12 +52,12 @@ class Optimize_Piezo:
         self.x_initial = self.input_piezo_controller.get_x_voltage_set()
 
 
-        self.power_readings = [[] for _ in range(len(list_of_meas_events))]
-        self.feedback_readings = [[] for _ in range(len(list_of_meas_events))]
-        self.time_stamps = [[] for _ in range(len(list_of_meas_events))]
+        self.power_readings = [[] for _ in range(len(list_of_meas_events)+1)]
+        self.feedback_readings = [[] for _ in range(len(list_of_meas_events)+1)]
+        self.time_stamps = [[] for _ in range(len(list_of_meas_events)+1)]
 
-        self.adv_power_readings = [[] for _ in range(len(list_of_meas_events))]
-        self.adv_time_stamps = [[] for _ in range(len(list_of_meas_events))]
+        self.adv_power_readings = [[] for _ in range(len(list_of_meas_events)+1)]
+        self.adv_time_stamps = [[] for _ in range(len(list_of_meas_events)+1)]
 
         time.sleep(1) #To ensure that the system is stable and that the powermeters have had sufficient time to connect.
 
@@ -181,10 +181,10 @@ class Optimize_Piezo:
         """
         self.initialize_optimization(list_of_meas_events)
 
-
+        meas_no = int(len(list_of_meas_events)/2)*2
         
         
-        for _ in range(len(list_of_meas_events)):
+        for _ in range(meas_no):
 
 
             self.meas_feedback_bool = False
@@ -511,7 +511,7 @@ class Optimize_Piezo:
 
         self.set_point(best_point)
 
-        finished_optimizing.is_set()
+        finished_optimizing.set()
 
 
 '''
