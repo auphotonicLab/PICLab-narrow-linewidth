@@ -200,6 +200,7 @@ class Optimize_Piezo:
             
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
+        saved_the_data.set()
         
     
     def optimize_none(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, optimize_y=True):
@@ -592,11 +593,20 @@ class Optimizer_Gradient_Descent:
     def estimate_gradient(self, function, point, point_value, learning_rate):
         #gradient_input_x = self.gradients(function, point, point_value,
             #                              np.array([learning_rate[0], 0, 0, 0, 0, 0]))
-        gradient_input_y, power_y, feedback_y, time_y = self.gradients(function, point, point_value,
-                                          np.array([learning_rate[0], 0]))
+            
+        #Taking the gradient in the positive y- and z-directions
+        gradient_input_y_pos, power_y_pos, feedback_y_pos, time_y_pos = self.gradients(function, point, point_value, np.array([learning_rate[0], 0]))
         
-        gradient_input_z, power_z, feedback_z, time_z = self.gradients(function, point, point_value,
-                                          np.array([0,learning_rate[1]]))
+        
+        gradient_input_z_pos, power_z_pos, feedback_z_pos, time_z_pos= self.gradients(function, point, point_value, np.array([0,learning_rate[1]]))
+        
+        
+        #Taking the gradient in the negative y- and z-directions as well
+        #gradient_input_y_neg, power_y_neg, feedback_y_neg, time_y_neg = self.gradients(function, point, point_value, np.array([-learning_rate[0], 0]))
+        
+        
+        #gradient_input_z_neg, power_z_neg, feedback_z_neg, time_z_neg = self.gradients(function, point, point_value, np.array([0, -learning_rate[1]]))
+        
         
         #gradient_output_x = self.gradients(function, point, point_value,
            #                                np.array([0, 0, 0, learning_rate[3], 0, 0]))
@@ -604,24 +614,31 @@ class Optimizer_Gradient_Descent:
           #                                 np.array([0, 0, 0, 0, learning_rate[4], 0]))
         #gradient_output_z = self.gradients(function, point, point_value,
          #                                  np.array([0, 0, 0, 0, 0, learning_rate[5]]))
+         
+        
+         
 
         first_moment = np.array(
-            [gradient_input_y, gradient_input_z])# gradient_output_x, gradient_output_y,
+            [gradient_input_y_pos, gradient_input_z_pos])# gradient_output_x, gradient_output_y,
              #gradient_output_z])
+             
+        power_list = [power_y_pos, power_z_pos]
+        feedback_list = [feedback_y_pos, feedback_z_pos]
+        time_list = [time_y_pos, time_z_pos]
         
-        power_list = [power_y, power_z]
-        feedback_list = [feedback_y, feedback_z]
-        time_list = [time_y,time_z]
+        # power_list = [power_y_pos, power_z_pos, power_y_neg, power_z_neg]
+        # feedback_list = [feedback_y_pos, feedback_z_pos, feedback_y_neg, feedback_z_neg]
+        # time_list = [time_y_pos, time_z_pos, time_y_neg, time_z_neg]
         
-        return first_moment, power_list, feedback_list, time_list
+        return first_moment, power_list, feedback_list, time_list, learning_rate
 
     def gradients(self, function, point, point_value, change):
         dh = np.linalg.norm(change)
 
         fx = point_value
-        [fx_h, power, feedback, aux_time_saver]  = function(point - change)
+        [fx_h, power, feedback, aux_time_saver]  = function(point - change) 
 
-        first_order = (fx - fx_h) / (dh)
+        first_order = (fx - fx_h) / (dh) #As the compute_function value outputs the negative of the power, then we should find a (global) minimum. So if fx_h is less than fx, then the gradient is positive. Might be a mistake here.
         return first_order, power, feedback, aux_time_saver
 
     def update(self, function, current_point, current_value, index, fail_counter):
@@ -637,7 +654,7 @@ class Optimizer_Gradient_Descent:
             beta2 = settings_dict["beta2"]
             epsilon = settings_dict["epsilon"]
 
-        gradient, power_list, feedback_list, time_list = self.estimate_gradient(function, current_point,
+        gradient, power_list, feedback_list, time_list, learning_rate = self.estimate_gradient(function, current_point,
                                           current_value, gradient_estimation)
 
         print("Gradient: ", gradient)
@@ -650,7 +667,7 @@ class Optimizer_Gradient_Descent:
         self.v_hat = self.v / (1 - beta2 ** (index + 1))
 
         change = learning_rate * self.m_hat / (np.sqrt(self.v_hat) + epsilon)
-        new_point = current_point - change
+        new_point = current_point - change #Not really clear to me, however, I believe if the gradient is positive (when looking at f(x-h) it should go in the other direction, thus actually changing the sign of the change. I'm not sure it happens here.
         return new_point, power_list, feedback_list, time_list
 
 
