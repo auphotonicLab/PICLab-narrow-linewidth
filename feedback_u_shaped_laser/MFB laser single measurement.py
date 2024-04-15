@@ -638,6 +638,7 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
 
         #Clears the saved_data so it can be used next iteration.
         saved_the_data.clear()
+        
 
 
 
@@ -676,7 +677,7 @@ if __name__ == '__main__':
 
     # Create an event to signal the processes to finish
     
-    list_of_meas_events = [multiprocessing.Event() for _ in range(22)]
+    list_of_meas_events = [multiprocessing.Event() for _ in range(52)]
     
     finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
 
@@ -686,8 +687,8 @@ if __name__ == '__main__':
 
     # Create and start the lab setup process
     
-    add_simple_opt = True #True: Allow for simple optimization during measurements, False: No optimization during measurements
-    meas_type = 'Agilent_simple_opt_' #Add name for the save folder for this run of measurements
+    add_simple_opt = False #True: Allow for simple optimization during measurements, False: No optimization during measurements
+    meas_type = 'Agilent_no_opt_' #Add name for the save folder for this run of measurements
     
     lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt))
     lab_setup_proc.start()
@@ -698,16 +699,16 @@ if __name__ == '__main__':
     measurement_proc.start()
 
     
-    # Wait for the measurement process to finish
-    measurement_proc.join()
-
     # Wait for the lab setup process to finish
     lab_setup_proc.join()
+    
+    # Wait for the measurement process to finish
+    #measurement_proc.join()
 
-    print("All processes finished.")
+    print("All processes finished. Except measurement process for some reason")
 
 
-print("All processes finished.")
+#print("All processes finished.")
 
 
 
