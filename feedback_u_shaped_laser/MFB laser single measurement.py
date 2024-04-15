@@ -586,7 +586,8 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
     
     laser_ref = 3.73e-5  # The reference laser value used in feedback ratio calculation. This is assumed to be the best coupling obtainable.
     
-    save_plots_data = True# The
+
+    save_plots_data = True
     feedback_on = True
     measure_OSA = False
     
@@ -599,31 +600,25 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
         
 
         
-        if save_plots_data:
-            plt.close('all')
+        plt.close('all')
         
         volt_source.setParameters(channel=1,voltage=voltage)
     
-        time.sleep(1)
+        time.sleep(0.3)
         
-        measurement_name = pic.datetimestring()
-        if save_plots_data:   
-            os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
-            data_folder = os.getcwd()
-            sweep_name = pic.datetimestring() + 'single_measurement'
-            
-            old_dir, save_dir = pic.change_folder(data_folder, sweep_name, meas_type)
-
-
-
-
-            pipe_sender.send((i, save_dir)) #Sending both the index and the save directory
+        measurement_name = pic.datetimestring()  #Using the meas_type name in the overall folder name, and sending the sweep folder name to the other process to save power   
+        os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
+        data_folder = os.getcwd()
+        sweep_name = pic.datetimestring() + 'single_measurement'
         
-            
+        old_dir, save_dir = pic.change_folder(data_folder, sweep_name, meas_type)
 
-        
+
+        pipe_sender.send((i, save_dir)) #Sending both the index and the save directory to ensure the data is saved in the correct place.
+    
+                
         #Waits until finished_optimizing is set to True. When set to True the power readings will be saved. 
-        finished_optimizing.wait() 
+        finished_optimizing.wait()
 
         
         # Perform measurements
@@ -632,15 +627,14 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
         #Starts the gradient descent optimization in between the measurements. Also stops the power meter readings from being saved.
         finished_optimizing.clear()
         
-        
-        #Notifies the other process that a measurement has been taken and it should save the power readings
-        list_of_meas_events[i].set()
-        
         # Put the measurement result into the queue for the main process
         result_queue.put(measurement_result)
 
         #Waits for the data to be saved before continuing (to not clog the pipe with multiple messages)
         saved_the_data.wait()
+
+        #Notifies the other process that a measurement has been taken and it should save the power readings
+        list_of_meas_events[i].set()
 
         #Clears the saved_data so it can be used next iteration.
         saved_the_data.clear()
@@ -689,7 +683,6 @@ if __name__ == '__main__':
     pipe_sender, pipe_receiver = multiprocessing.Pipe()
 
     saved_the_data = multiprocessing.Event()
-    saved_the_data.set()
 
     # Create and start the lab setup process
     

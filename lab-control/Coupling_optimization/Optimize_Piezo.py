@@ -181,7 +181,7 @@ class Optimize_Piezo:
         """
         self.initialize_optimization(list_of_meas_events)
 
-        meas_no = int(len(list_of_meas_events)/2)*2
+        meas_no = int(len(list_of_meas_events)/2)*2 #Ensuring the amount of measurements are the same for both processes.
         
         
         for _ in range(meas_no):
@@ -229,10 +229,13 @@ class Optimize_Piezo:
 
         """
 
-        self.initialize_optimization(list_of_meas_events)
+        self.initialize_optimization(list_of_meas_events) 
+
+        meas_no = int(len(list_of_meas_events)/2)*2 #Ensuring the amount of measurements are the same for both processes.
+
 
         
-        for _ in range(len(list_of_meas_events)): #Could include an index and ditch the "check_meas_no" method.
+        for _ in range(meas_no): #Could include an index and ditch the "check_meas_no" method.
 
             self.meas_feedback_bool = False
             self.optimize(list_of_meas_events, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.      
