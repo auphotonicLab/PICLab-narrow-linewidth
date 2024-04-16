@@ -264,6 +264,24 @@ class laser_powers:
 
 
 
+
+
+def single_laser_powers(path: str):
+
+    with open(path) as powers_file: 
+                
+        powers_lists = powers_file.readlines()
+
+        #First line is header
+        powers = eval(powers_lists[0+1]) #In watts
+
+        time = eval(powers_lists[1+1]) #In seconds
+
+    return powers, time
+            
+
+
+
 #UPDATED VERSION OF GET_SINGLE_MEASUREMENT_PATHS
 def get_single_measurement(directory: str):
     """Updated version of get_single_measurement_paths
@@ -303,6 +321,12 @@ def get_single_measurement(directory: str):
     path_close_signal = None
     path_osa = None
 
+    path_laser = None
+    path_feedback = None
+    path_opt = None
+
+    laser_power_time_dict = {}
+
     for txt_file in txt_files:
         if "ESA_full_spectrum_, EOM off" in txt_file:
             path_full_bg = path(txt_file)
@@ -314,6 +338,17 @@ def get_single_measurement(directory: str):
             path_close_signal = path(txt_file)
         if "OSA_full_spectrum" in txt_file:
             path_osa = path(txt_file)
+
+        if txt_file.endswith('Laser_power_readings.txt'):
+            path_laser = path(txt_file)
+
+        if txt_file.endswith('Feedback_power_readings.txt'):
+            path_feedback = path(txt_file)
+
+        if txt_file.endswith('Adv_laser_power_readings.txt'):
+            path_opt = path(txt_file)
+
+
     dsh_full = DshSpectrum(path_full_signal,path_full_bg)
 
     #Centering these spectra about the modulation frequency
@@ -324,7 +359,29 @@ def get_single_measurement(directory: str):
     else:
         osa = OsaSpectrum(path_osa)
 
-    return dsh_full, dsh_close, osa
+    if path_laser != None:
+        laser_power, laser_time = single_laser_powers(path_laser)
+
+        laser_power_time_dict ['laser_power'] = laser_power
+        laser_power_time_dict ['laser_time'] = laser_time
+
+    if path_feedback != None:
+        feedback_power, feedback_time = single_laser_powers(path_feedback)
+
+        laser_power_time_dict ['feedback_power'] = feedback_power
+        laser_power_time_dict ['feedback_time'] = feedback_time
+
+    if path_opt != None:
+        opt_power, opt_time = single_laser_powers(path_opt)
+
+        laser_power_time_dict ['optimization_power'] = opt_power
+        laser_power_time_dict ['optimization_time'] = opt_time
+
+    return dsh_full, dsh_close, osa, laser_power_time_dict
+
+
+
+
 
 #UPDATED VERSION OF GET_ALL_DATA
 def get_lab_session_data(directory):
@@ -353,10 +410,17 @@ def get_lab_session_data(directory):
     dsh_full = [tuple[0] for tuple in data]
     dsh_close = [tuple[1] for tuple in data]
     osa = [tuple[2] for tuple in data]
+    laser_readings = [tuple[3] for tuple in data]
     
-    laser_readings = laser_powers(directory)
+    if not laser_readings[0]: #If the first measurement has an empty dictionary
+        laser_readings = laser_powers(directory)
 
     return dsh_full, dsh_close, osa, laser_readings
+
+
+
+
+
 
 #MOVED FROM DATA_PROCESSING MODULE
 def feedback_ratio(laser_power,feedback_power,laser_ref,
