@@ -200,6 +200,7 @@ class Optimize_Piezo:
             
         self.target_detector.closeConnection()
         self.feedback_detector.closeConnection()
+        finished_optimizing.set()
         saved_the_data.set()
         
     
