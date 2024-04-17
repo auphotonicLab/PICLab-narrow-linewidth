@@ -137,17 +137,17 @@ class Optimize_Piezo:
         index, path = pipe_receiver.recv()
 
         try:
-            np.savetxt(f'{path}\\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(f'{path}\\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time]  during measurements \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(f'{path}\\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s,', header = f'[Power,time] during measurements \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(f'{path}\\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s,', header = f'[Power,time]  during measurements \t time start {self.time_start}, time end {self.time_end}')
 
-            np.savetxt(f'{path}\\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s', header = f'[Power,time] readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(f'{path}\\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s,', header = f'[Power,time] readings during advanced optimization algorithm \t time start {self.time_start}, time end {self.time_end}')
 
         except:
             
-            np.savetxt(fr'{path}\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements, [power, time] pr. line \t time start {self.time_start}, time end {self.time_end}')
-            np.savetxt(fr'{path}\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s', header = f'[Power,time] during measurements [power, time] \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(fr'{path}\{self.time_start}_Laser_power_readings.txt', (self.power_readings[index],self.time_stamps[index]), fmt='%s,', header = f'[Power,time] during measurements, [power, time] pr. line \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(fr'{path}\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s,', header = f'[Power,time] during measurements [power, time] \t time start {self.time_start}, time end {self.time_end}')
 
-            np.savetxt(fr'{path}\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s', header = f'[Power,time] readings during advanced optimization algorithm [power,time] \t time start {self.time_start}, time end {self.time_end}')
+            np.savetxt(fr'{path}\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s,', header = f'[Power,time] readings during advanced optimization algorithm [power,time] \t time start {self.time_start}, time end {self.time_end}')
 
 
 
