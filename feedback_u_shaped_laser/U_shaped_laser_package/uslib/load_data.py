@@ -269,13 +269,24 @@ class laser_powers:
 def single_laser_powers(path: str):
 
     with open(path) as powers_file: 
-                
+
         powers_lists = powers_file.readlines()
 
-        #First line is header
-        powers = eval(powers_lists[0+1]) #In watts
+        try:
+            powers = list(eval(powers_lists[0+1])) #In watts
 
-        time = eval(powers_lists[1+1]) #In seconds
+            time = list(eval(powers_lists[1+1])) #In seconds
+
+        except SyntaxError:
+
+            powers_lists[0+1]=powers_lists[1].replace(' ', ', ')
+            powers_lists[1+1] = powers_lists[2].replace(' ', ', ')
+
+            #First line is header
+
+            powers = list(eval(powers_lists[0+1])) #In watts
+
+            time = list(eval(powers_lists[1+1])) #In seconds
 
     return powers, time
             
