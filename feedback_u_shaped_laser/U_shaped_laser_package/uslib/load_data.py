@@ -365,11 +365,16 @@ def get_single_measurement(directory: str):
         if txt_file.endswith('Adv_laser_power_readings.txt'):
             path_opt = path(txt_file)
 
+    if path_full_signal != None:
+        dsh_full = DshSpectrum(path_full_signal,path_full_bg)
+    else:
+        dsh_full = None
 
-    dsh_full = DshSpectrum(path_full_signal,path_full_bg)
-
-    #Centering these spectra about the modulation frequency
-    dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
+    if path_close_signal != None:
+        #Centering these spectra about the modulation frequency
+        dsh_close = DshSpectrum(path_close_signal,path_close_bg,center=80)
+    else:
+        dsh_close = None
 
     if path_osa == None:
         osa = None
