@@ -267,6 +267,12 @@ class laser_powers:
 
 
 def single_laser_powers(path: str):
+    '''
+    Works regardsless of using comma as delimiter or not.
+
+    Returns: laser power, time
+    
+    '''
 
     with open(path) as powers_file: 
 

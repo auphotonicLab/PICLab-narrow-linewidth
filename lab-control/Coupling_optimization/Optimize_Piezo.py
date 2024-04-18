@@ -442,7 +442,8 @@ class Optimize_Piezo:
             
             self.save_power_readings(list_of_meas_events, current_power, current_feedback, aux_time_saver)
 
-            time.sleep(0.1) #To give roughly the same amount of datapoints as simple_optimization
+            #time.sleep(0.1) #To give roughly the same amount of datapoints as simple_optimization
+            #0.2 gives 61-62 datapoints, 0.1 gives 82-83 datapoints, trying without
             
  
 
@@ -516,7 +517,7 @@ class Optimize_Piezo:
 
         self.set_point(best_point)
         
-        time.sleep(0.1)
+        time.sleep(0.3)
 
         finished_optimizing.set()
 
