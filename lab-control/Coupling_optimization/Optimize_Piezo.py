@@ -315,8 +315,8 @@ class Optimize_Piezo:
             
  
                 
-            z_change = np.array([0,0.05]) #Optimize z
-            y_change = np.array([0.05,0]) #Optimize y
+            z_change = np.array([0,0.005]) #Optimize z
+            y_change = np.array([0.005,0]) #Optimize y
             
             new_point = best_point - z_change
             
