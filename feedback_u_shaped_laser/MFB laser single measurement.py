@@ -627,7 +627,7 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
 
         
         if simulate_meas:
-            time.sleep(25)
+            time.sleep(30)
             
         else:
             # Perform measurements
@@ -682,46 +682,48 @@ def lab_setup(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the
 
 if __name__ == '__main__':
     # Create a queue to communicate measurement results back to the main process
-    result_queue = multiprocessing.Queue()
-
-    # Create an event to signal the processes to finish
+    for add_simple_opt in [True, False]:
+            
+        result_queue = multiprocessing.Queue()
     
-    list_of_meas_events = [multiprocessing.Event() for _ in range(52)]
+        # Create an event to signal the processes to finish
+        
+        list_of_meas_events = [multiprocessing.Event() for _ in range(26)]
+        
+        finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
     
-    finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
-
-    pipe_sender, pipe_receiver = multiprocessing.Pipe()
-
-    saved_the_data = multiprocessing.Event()
-
-    # Create and start the lab setup process
+        pipe_sender, pipe_receiver = multiprocessing.Pipe()
     
-    add_simple_opt = True #True: Allow for simple optimization during measurements, False: No optimization during measurements
-    meas_type = 'Agilent_simple_opt_no_fb_large_' #Add name for the save folder for this run of measurements
+        saved_the_data = multiprocessing.Event()
     
-    lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt))
-    lab_setup_proc.start()
-
-
-    # Create and start the measurement process
-    measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type))
-    measurement_proc.start()
-
+        # Create and start the lab setup process
+        
+        if add_simple_opt == True: #True: Allow for simple optimization during measurements, False: No optimization during measurements
+            meas_type = 'Agilent_simple_opt_no_fb_0.03V_0.01s_' #Add name for the save folder for this run of measurements
+        else:
+            meas_type = 'Agilent_no_opt_no_fb_0.03V_0.01s_'
+            
+        lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt))
+        lab_setup_proc.start()
     
-    # Wait for the lab setup process to finish
-    lab_setup_proc.join()
     
-    # Wait for the measurement process to finish
-    #measurement_proc.join()
-
-    print("All processes finished. Except measurement process for some reason")
+        # Create and start the measurement process
+        measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type))
+        measurement_proc.start()
+    
+        
+        # Wait for the lab setup process to finish
+        lab_setup_proc.join()
+        
+        # Wait for the measurement process to finish
+        #measurement_proc.join()
+    
+        print("All processes finished. Except measurement process for some reason")
 
 
 #print("All processes finished.")
 
-
-
-
+    
 
 #%%
 
