@@ -160,11 +160,12 @@ class Optimize_Piezo:
         plt.ylim([0.98,1])
         plt.legend()
         plt.savefig(f'{path}\\power_plot')
+        plt.close()
 
 
 
             
-    def optimize_simple(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, optimize_y=True):
+    def optimize_simple(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, simple_pow_avg_time, optimize_y=True):
         """
         Optimization method that uses the advanced optimization algorithm inbetween measurements and then uses the simple algorithm during the measurements.
 
@@ -202,7 +203,7 @@ class Optimize_Piezo:
             self.powerAvgTime = 0.05
             self.optimize(list_of_meas_events, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.
             
-            self.powerAvgTime = 0.01
+            self.powerAvgTime = simple_pow_avg_time
             self.meas_feedback_bool = True
             self.simple_algorithm(list_of_meas_events, finished_optimizing)
 
@@ -217,7 +218,7 @@ class Optimize_Piezo:
         saved_the_data.set()
         
     
-    def optimize_none(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, optimize_y=True):
+    def optimize_none(self, list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, simple_pow_avg_time, optimize_y=True):
         """
         Optimization method that uses the advanced optimization algorithm inbetween measurements and nothing during the measurements.
 
@@ -257,7 +258,7 @@ class Optimize_Piezo:
             self.optimize(list_of_meas_events, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.      
 
 
-            self.powerAvgTime = 0.01
+            self.powerAvgTime = simple_pow_avg_time
             self.meas_feedback_bool = True
             self.no_algorithm(list_of_meas_events, finished_optimizing)
 
@@ -332,8 +333,8 @@ class Optimize_Piezo:
 
 
                 
-            z_change = np.array([0,0.03]) #Optimize z
-            y_change = np.array([0.03,0]) #Optimize y
+            z_change = np.array([0,0.07]) #Optimize z
+            y_change = np.array([0.07,0]) #Optimize y
             
             new_point = best_point - z_change
             
