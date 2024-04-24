@@ -3,6 +3,7 @@ import json
 import numpy as np
 from GUI.Functions.functions import power_W_to_dBm
 import time
+import matplotlib.pyplot as plt
 
 class Optimize_Piezo:
 
@@ -30,6 +31,8 @@ class Optimize_Piezo:
         
         self.time_start = None
         self.time_end = None
+        
+        self.powerAvgTime = 0.005
 
         with open(self.settings_path, "r") as text_file:
             settings_dict = json.load(text_file)
@@ -114,10 +117,10 @@ class Optimize_Piezo:
         time.sleep(0.001)
         
         feedback = None
-        value = self.target_detector.GetPower()
+        value = self.target_detector.GetPower(self.powerAvgTime)
         
         if self.meas_feedback_bool:
-            feedback = self.feedback_detector.GetPower()
+            feedback = self.feedback_detector.GetPower(self.powerAvgTime)
         
         aux_time_saver = time.time()
         
@@ -148,7 +151,15 @@ class Optimize_Piezo:
             np.savetxt(fr'{path}\{self.time_start}_Feedback_power_readings.txt', (self.feedback_readings[index],self.time_stamps[index]), fmt='%s,', header = f'[Power,time] during measurements [power, time] \t time start {self.time_start}, time end {self.time_end}')
 
             np.savetxt(fr'{path}\{self.time_start}_Adv_laser_power_readings.txt', (self.adv_power_readings[index],self.adv_time_stamps[index]), fmt='%s,', header = f'[Power,time] readings during advanced optimization algorithm [power,time] \t time start {self.time_start}, time end {self.time_end}')
-
+        
+        
+        plt.figure()
+        plt.plot(self.time_stamps[index],np.array(self.power_readings[index])/max(self.power_readings[index]), label = 'After coupling power, norm. to max')
+        plt.plot(self.time_stamps[index],np.array(self.feedback_readings[index])/max(self.feedback_readings[index]),label = 'Agilent directly inserted, norm. to max')     
+        plt.plot(self.time_stamps[index],np.array(self.power_readings[index])/np.array(self.feedback_readings[index])*max(self.feedback_readings[index])/max(self.power_readings[index]),'--',label='After coupling power norm. to direct Agilent')
+        plt.ylim([0.98,1])
+        plt.legend()
+        plt.savefig(f'{path}\\power_plot')
 
 
 
@@ -188,8 +199,10 @@ class Optimize_Piezo:
 
 
             self.meas_feedback_bool = False
+            self.powerAvgTime = 0.05
             self.optimize(list_of_meas_events, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.
             
+            self.powerAvgTime = 0.01
             self.meas_feedback_bool = True
             self.simple_algorithm(list_of_meas_events, finished_optimizing)
 
@@ -240,8 +253,11 @@ class Optimize_Piezo:
         for _ in range(meas_no): #Could include an index and ditch the "check_meas_no" method.
 
             self.meas_feedback_bool = False
+            self.powerAvgTime = 0.05
             self.optimize(list_of_meas_events, finished_optimizing) #Should change finished_optimizing to True when finished optimizing.      
 
+
+            self.powerAvgTime = 0.01
             self.meas_feedback_bool = True
             self.no_algorithm(list_of_meas_events, finished_optimizing)
 
@@ -305,18 +321,19 @@ class Optimize_Piezo:
         
         
         while finished_optimizing.is_set():
+
+
+            best_point_z = best_point.copy()
+            best_value_z = best_value
+
             
-            
-            current_power = self.target_detector.GetPower()
-            current_feedback = self.feedback_detector.GetPower()
-            aux_time_saver = time.time()
-            
-            self.save_power_readings(list_of_meas_events, current_power, current_feedback, aux_time_saver)
-            
- 
+            best_point_y = best_point.copy() 
+            best_value_y = best_value
+
+
                 
-            z_change = np.array([0,0.1]) #Optimize z
-            y_change = np.array([0.1,0]) #Optimize y
+            z_change = np.array([0,0.03]) #Optimize z
+            y_change = np.array([0.03,0]) #Optimize y
             
             new_point = best_point - z_change
             
@@ -333,9 +350,9 @@ class Optimize_Piezo:
                     
             # Update the best point if the new point has a lower function value
             if new_value < best_value:
-                best_point = new_point
-                best_value = new_value
-                best_W_value = new_W_value
+                best_point_z = new_point.copy()
+                best_value_z = new_value
+
             
             else: #Checking the other z-direction
                 new_point = best_point + z_change
@@ -352,61 +369,58 @@ class Optimize_Piezo:
 
                 
                 if new_value < best_value:
-                    best_point = new_point
-                    best_value = new_value
-                    best_W_value = new_W_value
+                    best_point_z = new_point.copy()
+                    best_value_z = new_value
+                    
                 
-                elif optimize_y:
-                    new_point = best_point - y_change
+            if optimize_y:
+                new_point = best_point - y_change
+            
+                new_point[0] = np.clip(new_point[0], 0, 75)
+                new_point[1] = np.clip(new_point[1], 0, 75)
+                
+                [new_value,new_W_value, new_feedback, aux_time_saver] = self.compute_function_value(new_point)
+                    
+                    
+                print("New Point: ", new_point)
+                    
+                self.save_power_readings(list_of_meas_events, new_W_value, new_feedback, aux_time_saver)
+
+                    
+                if new_value < best_value:
+                    best_point_y = new_point.copy()
+                    best_value_y = new_value
+                    
+                else: 
+                    new_point = best_point + y_change
             
                     new_point[0] = np.clip(new_point[0], 0, 75)
                     new_point[1] = np.clip(new_point[1], 0, 75)
-                
+                    
                     [new_value,new_W_value, new_feedback, aux_time_saver] = self.compute_function_value(new_point)
-                    
-                    
+                        
                     print("New Point: ", new_point)
                     
                     self.save_power_readings(list_of_meas_events, new_W_value, new_feedback, aux_time_saver)
 
-                    
+                        
                     if new_value < best_value:
-                        best_point = new_point
-                        best_value = new_value
-                        best_W_value = new_W_value
-                    
-                    else: 
-                        new_point = best_point + y_change
-            
-                        new_point[0] = np.clip(new_point[0], 0, 75)
-                        new_point[1] = np.clip(new_point[1], 0, 75)
-                    
-                        [new_value,new_W_value, new_feedback, aux_time_saver] = self.compute_function_value(new_point)
-                        
-                        print("New Point: ", new_point)
-                    
-                        self.save_power_readings(list_of_meas_events, new_W_value, new_feedback, aux_time_saver)
+                        best_point_y = new_point.copy()
+                        best_value_y = new_value
 
-                        
-                        if new_value < best_value:
-                            best_point = new_point
-                            best_value = new_value
-                            best_W_value = new_W_value
-                            
+            #Checking which value is the lowest. If none of the new Z-value are lower than the original best value, then they wouldn't be saved and best_value_z = best_value, same for y. 
+            #If both are the case, the current point is already the best point and best_value_z = best_value = best_value_z and best_point is unchanged. 
+            if best_value_z < best_value_y:
+                best_point = best_point_z.copy()
                 
+            elif best_value_y < best_value_z:
+                best_point = best_point_y.copy()
+                                
+            [current_value,current_W_value, current_feedback, aux_time_saver] = self.compute_function_value(best_point) #Sets and measures the best point
+            
+            best_value = current_value #Making the algorithm forget it's previous best value
 
-            self.set_point(best_point)
-            
-            print("New value: ", -new_value, new_W_value, "Best value: ", -best_value, best_W_value)
-                    
-            while_current_power = self.target_detector.GetPower()
-            
-            best_value = while_current_power #Making the algorithm forget it's best point
-            
-            while_current_feedback = self.feedback_detector.GetPower()
-            aux_time_saver = time.time()
-
-            self.save_power_readings(list_of_meas_events, while_current_power, while_current_feedback, aux_time_saver)
+            self.save_power_readings(list_of_meas_events, current_W_value, current_feedback, aux_time_saver)
 
 
     def no_algorithm(self, list_of_meas_events, finished_optimizing):
@@ -436,8 +450,8 @@ class Optimize_Piezo:
 
         while finished_optimizing.is_set():
             
-            current_power = self.target_detector.GetPower()
-            current_feedback = self.feedback_detector.GetPower()
+            current_power = self.target_detector.GetPower(self.powerAvgTime)
+            current_feedback = self.feedback_detector.GetPower(self.powerAvgTime)
             aux_time_saver = time.time()
             
             self.save_power_readings(list_of_meas_events, current_power, current_feedback, aux_time_saver)
