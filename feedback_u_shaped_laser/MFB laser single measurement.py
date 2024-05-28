@@ -548,20 +548,23 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
     import Moni_Lab_control as pic
     import pyvisa as visa
     
-    TOSA_bool = False
-    OSA_bool = False
-    ESA_bool = True
-    EOM_bool = True
-    Laser_Powermeter_bool = False
-    Feedback_Powermeter_bool = False
-    DC_supply_bool = True
+    simulate_meas = True
     
-    [TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source]  = connect_to_instruments(TOSA_bool, OSA_bool, ESA_bool, EOM_bool, Laser_Powermeter_bool, Feedback_Powermeter_bool, DC_supply_bool)
     
-    if TOSA_bool:
-        parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 60, soa2curr = 60, ph1curr = 0, ph2curr = 0)
-    
-
+    if not simulate_meas:
+        TOSA_bool = False
+        OSA_bool = False
+        ESA_bool = True
+        EOM_bool = True
+        Laser_Powermeter_bool = False
+        Feedback_Powermeter_bool = False
+        DC_supply_bool = True
+        
+        [TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source]  = connect_to_instruments(TOSA_bool, OSA_bool, ESA_bool, EOM_bool, Laser_Powermeter_bool, Feedback_Powermeter_bool, DC_supply_bool)
+        
+        if TOSA_bool:
+            parameter_string = set_Tosa_params(TOSA, m1curr = 1.5, m2curr = 0, lphcurr = 0, lgcurr = 60, soa1curr = 60, soa2curr = 60, ph1curr = 0, ph2curr = 0)
+        
     
     
     half_no_of_meas = int(len(list_of_meas_events)/2)
@@ -602,9 +605,11 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
         
         plt.close('all')
         
-        volt_source.setParameters(channel=1,voltage=voltage)
+        
+        if not simulate_meas:
+            volt_source.setParameters(channel=1,voltage=voltage)
     
-        time.sleep(0.3)
+            time.sleep(0.3)
         
         measurement_name = pic.datetimestring()  #Using the meas_type name in the overall folder name, and sending the sweep folder name to the other process to save power   
         os.chdir('C:\\Users\\Group Login\\Documents\\Simon\\measurementData3')
@@ -621,14 +626,19 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
         finished_optimizing.wait()
 
         
-        # Perform measurements
-        measurement_result = single_measurement(measurement_name, measure_OSA, save_plots_data, feedback_on, delay_length, modulation_frequency, V_pp, ESA, OSA, EOM, pm100,laser_coef, laser_ref, pm101_fb, resolution_BW_dsh, span_ESA_dsh,resolution_BW_full ,span_ESA_full, sweepcount, voltage, temperature)
+        if simulate_meas:
+            time.sleep(30)
+            
+        else:
+            # Perform measurements
+            measurement_result = single_measurement(measurement_name, measure_OSA, save_plots_data, feedback_on, delay_length, modulation_frequency, V_pp, ESA, OSA, EOM, pm100,laser_coef, laser_ref, pm101_fb, resolution_BW_dsh, span_ESA_dsh,resolution_BW_full ,span_ESA_full, sweepcount, voltage, temperature)
         
         #Starts the gradient descent optimization in between the measurements. Also stops the power meter readings from being saved.
         finished_optimizing.clear()
         
-        # Put the measurement result into the queue for the main process
-        result_queue.put(measurement_result)
+        if not simulate_meas:
+            # Put the measurement result into the queue for the main process
+            result_queue.put(measurement_result)
 
         #Waits for the data to be saved before continuing (to not clog the pipe with multiple messages)
         saved_the_data.wait()
@@ -642,11 +652,12 @@ def measurement_process(result_queue, list_of_meas_events, finished_optimizing, 
         
     print("Measurement process finished.")    
     
-    close_connections(TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source)
+    if not simulate_meas:
+        close_connections(TOSA, OSA, ESA, EOM, pm100, pm101_fb, volt_source)
 
 
     
-def lab_setup(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt=True):
+def lab_setup(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt=True, simple_pow_avg_time=0.02):
     
     '''
     Function that starts the optimization process of the coupling
@@ -662,55 +673,58 @@ def lab_setup(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the
     mdt.open_instruments()
     
     if add_simple_opt:
-        mdt.optimize_piezo.optimize_simple(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data)
+        mdt.optimize_piezo.optimize_simple(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, simple_pow_avg_time)
     
     else: 
-        mdt.optimize_piezo.optimize_none(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data)
+        mdt.optimize_piezo.optimize_none(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, simple_pow_avg_time)
     
 
 
 if __name__ == '__main__':
     # Create a queue to communicate measurement results back to the main process
-    result_queue = multiprocessing.Queue()
-
-    # Create an event to signal the processes to finish
-    
-    list_of_meas_events = [multiprocessing.Event() for _ in range(102)]
-    
-    finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
-
-    pipe_sender, pipe_receiver = multiprocessing.Pipe()
-
-    saved_the_data = multiprocessing.Event()
-
-    # Create and start the lab setup process
-    
-    add_simple_opt = False #True: Allow for simple optimization during measurements, False: No optimization during measurements
-    meas_type = 'Agilent_simple_no_opt_double_datapoints_' #Add name for the save folder for this run of measurements
-    
-    lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt))
-    lab_setup_proc.start()
-
-
-    # Create and start the measurement process
-    measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type))
-    measurement_proc.start()
-
-    
-    # Wait for the lab setup process to finish
-    lab_setup_proc.join()
-    
-    # Wait for the measurement process to finish
-    #measurement_proc.join()
-
-    print("All processes finished. Except measurement process for some reason")
+    for simple_pow_avg_time in [0.02,0.01]:
+        for add_simple_opt in [True, False]:
+                
+            result_queue = multiprocessing.Queue()
+        
+            # Create an event to signal the processes to finish
+            
+            list_of_meas_events = [multiprocessing.Event() for _ in range(26)]
+            
+            finished_optimizing = multiprocessing.Event() #Is False when advanced optimization is running in between measurements
+        
+            pipe_sender, pipe_receiver = multiprocessing.Pipe()
+        
+            saved_the_data = multiprocessing.Event()
+        
+            # Create and start the lab setup process
+            
+            if add_simple_opt == True: #True: Allow for simple optimization during measurements, False: No optimization during measurements
+                meas_type = f'Agilent_simple_opt_no_fb_0.07V_{simple_pow_avg_time}s_' #Add name for the save folder for this run of measurements
+            else:
+                meas_type = f'Agilent_no_opt_no_fb_0.07V_{simple_pow_avg_time}s_'
+                
+            lab_setup_proc = multiprocessing.Process(target=lab_setup, args=(list_of_meas_events, finished_optimizing, pipe_receiver, saved_the_data, add_simple_opt, simple_pow_avg_time))
+            lab_setup_proc.start()
+        
+        
+            # Create and start the measurement process
+            measurement_proc = multiprocessing.Process(target=measurement_process, args=(result_queue, list_of_meas_events, finished_optimizing, pipe_sender, saved_the_data, meas_type))
+            measurement_proc.start()
+        
+            
+            # Wait for the lab setup process to finish
+            lab_setup_proc.join()
+            
+            # Wait for the measurement process to finish
+            #measurement_proc.join()
+        
+            print("All processes finished. Except measurement process for some reason")
 
 
 #print("All processes finished.")
 
-
-
-
+    
 
 #%%
 
