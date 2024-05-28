@@ -198,7 +198,7 @@ class DshSpectrum:
 
 class laser_powers:
     '''
-    Class extracting laser and feedback powers from separate .txt files
+    Class extracting laser and feedback powers from separate .txt files (containing all power readings in one file [compared to the other where it's individual files])
     Calculates variance and mean
     '''
 
