@@ -394,8 +394,11 @@ def get_single_measurement(directory: str):
         laser_power_time_dict ['feedback_time'] = feedback_time
 
     if path_opt != None:
-        opt_power, opt_time = single_laser_powers(path_opt)
-
+        try:
+            opt_power, opt_time = single_laser_powers(path_opt)
+        except: #In case the file is there, but empty
+            opt_power = None
+            opt_time = None
         laser_power_time_dict ['optimization_power'] = opt_power
         laser_power_time_dict ['optimization_time'] = opt_time
 
