@@ -5,6 +5,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from datetime import datetime
+
 
 #First party imports
 import uslib.fit_functions as ff
@@ -435,10 +437,17 @@ def get_lab_session_data(directory):
     dsh_full = [tuple[0] for tuple in data]
     dsh_close = [tuple[1] for tuple in data]
     osa = [tuple[2] for tuple in data]
-    laser_readings = [tuple[3] for tuple in data]
-    
-    if not laser_readings[0]: #If the first measurement has an empty dictionary
+
+    if not data[0][3]: #If the first measurement has an empty dictionary
         laser_readings = laser_powers(directory)
+    else:
+        laser_readings = [{} for _ in files]
+
+        start_time = datetime.strptime(os.listdir(files)[0][11:19],"%H-%M-%S")
+        for i,tuple in enumerate(data):
+            tuple[3]['start_time'] = (datetime.strptime(os.listdir(files)[i][11:19],"%H-%M-%S") - start_time).total_seconds() #The relative start time of each measurement
+            laser_readings[i] = tuple[3]
+            
 
     return dsh_full, dsh_close, osa, laser_readings
 
