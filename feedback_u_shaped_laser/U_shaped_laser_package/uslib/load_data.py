@@ -443,11 +443,11 @@ def get_lab_session_data(directory):
     else:
         laser_readings = [{} for _ in files]
 
-        start_time = datetime.strptime(os.listdir(files)[0][11:19],"%H-%M-%S")
+        start_time = datetime.strptime(files[0][11:19],"%H-%M-%S")
         for i,tuple in enumerate(data):
-            tuple[3]['start_time'] = (datetime.strptime(os.listdir(files)[i][11:19],"%H-%M-%S") - start_time).total_seconds() #The relative start time of each measurement
+            tuple[3]['start_time'] = (datetime.strptime(files[i][11:19],"%H-%M-%S") - start_time).total_seconds() #The relative start time of each measurement
             laser_readings[i] = tuple[3]
-            
+
 
     return dsh_full, dsh_close, osa, laser_readings
 
