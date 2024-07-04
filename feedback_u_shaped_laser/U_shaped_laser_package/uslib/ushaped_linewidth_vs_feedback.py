@@ -39,7 +39,7 @@ def get_data(path, plot=False):
     filtered_linewidths = []
     for i in range(len(smsrs)):
         if (i > 0 and i < (len(smsrs) -1)):
-            if (smsrs[i-1] > 35 and smsrs[i+1] > 35):
+            if (smsrs[i-1] > 35 and smsrs[i] > 35):
                 filtered_linewidths.append(linewidths[i])
                 
     
