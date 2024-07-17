@@ -83,8 +83,11 @@ class DshSpectrum:
             freqs: array of ESA frequencies
             powers: array of ESA powers in dBm
         """
-
-        data = np.loadtxt(path)
+        try:
+            print(path)
+            data = np.loadtxt(path)
+        except ValueError:
+            data = np.loadtxt(path, delimiter=',')
 
         try: 
             freqs = data[0,:]*1e-6
@@ -92,7 +95,7 @@ class DshSpectrum:
         except ValueError:
             freqs = data[:,0]*1e-6
             powers = data[:,1]
-            
+
         return freqs, powers
 
     def plot(self, label=''):
@@ -165,6 +168,7 @@ class DshSpectrum:
             header = data.readline().strip().replace('# ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=')
             header2 = data.readline().strip().replace('#  ','').replace('# ','').replace('Parameters: ','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=')
 
+        
         #Making sure that no empty values are included
         header_final = [i for i in header.split(',') if i]
 
@@ -172,35 +176,38 @@ class DshSpectrum:
 
         all_params_list = header_final + header2_final
 
-
         params_dict = {}
-        #Creating the dictionary
-        for parameter_string in all_params_list:
 
-            param_list = parameter_string.split('=')
+        if sum(['=' in file for file in all_params_list])<1:
+            pass
+        else:
+            #Creating the dictionary
+            for parameter_string in all_params_list:
 
-            key = param_list[0]
-            value = param_list[1]
-            #Finding the first digit of the float in the value part of the string
-            for j, val in enumerate(value):
-                if val.isdigit() or val=='-':
-                    first_placement = j
-                    break
-            #Finding the last digit of the float in the value part of the string
-            for j in range(len(value)-1,-1,-1):
+                param_list = parameter_string.split('=')
 
-                if value[j].isdigit():
-                    last_placement = j+1
-                    break
-            #Obtaining the full number and turning it into a float
-            try:
-                float_value = float(value[first_placement:last_placement])
+                key = param_list[0]
+                value = param_list[1]
+                #Finding the first digit of the float in the value part of the string
+                for j, val in enumerate(value):
+                    if val.isdigit() or val=='-':
+                        first_placement = j
+                        break
+                #Finding the last digit of the float in the value part of the string
+                for j in range(len(value)-1,-1,-1):
 
-            except ValueError:
-                float_value = value
-                #print('The value for' + key + 'is not a float')
-            #Saving the key and value in the dictionary
-            params_dict[key] = float_value
+                    if value[j].isdigit():
+                        last_placement = j+1
+                        break
+                #Obtaining the full number and turning it into a float
+                try:
+                    float_value = float(value[first_placement:last_placement])
+
+                except ValueError:
+                    float_value = value
+                    #print('The value for' + key + 'is not a float')
+                #Saving the key and value in the dictionary
+                params_dict[key] = float_value
 
         return params_dict
 
@@ -530,18 +537,22 @@ def get_SMSR_filtered_measurements(directory: str):
     path_full_after = [None for _ in range(number_meas)]
     path_close = [None for _ in range(number_meas)]
 
+    path_osa = None
+
     path_RIN = None
+
+    counter = 0
 
     for txt_file in txt_files:
 
         if "zoom" in txt_file:
 
-            number = int(txt_file[3])
+            counter +=1
 
-            path_close[number-1] = path(txt_file)
+            path_close[counter-1] = path(txt_file)
 
-            path_full_prev[number-1] = path(f'no {number-1}full.txt')
-            path_full_after[number-1] = path(f'no {number}full.txt')
+            path_full_prev[counter-1] = path(f'no {counter-1}full.txt')
+            path_full_after[counter-1] = path(f'no {counter}full.txt')
 
         if "OSA_full_spectrum" in txt_file:
             path_osa = path(txt_file)
