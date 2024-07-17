@@ -85,8 +85,14 @@ class DshSpectrum:
         """
 
         data = np.loadtxt(path)
-        freqs = data[0,:]*1e-6
-        powers = data[1,:]
+
+        try: 
+            freqs = data[0,:]*1e-6
+            powers = data[1,:]
+        except ValueError:
+            freqs = data[:,0]*1e-6
+            powers = data[:,1]
+            
         return freqs, powers
 
     def plot(self, label=''):
@@ -453,6 +459,124 @@ def get_lab_session_data(directory):
 
 
 
+#For filtered SMSR (before and after linewidth measurement) data.
+def get_SMSR_filtered_data(directory):
+    """Used to get data for all SMSR filtered measurements in a given lab session
+
+    Args:
+        directory (str): directory path for a measurement session.
+        Example directory:
+        "O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips
+        \\Chip 3 Feedback measurements\\16-07"
+
+    Returns:
+        Array containing data for all single measurements
+    """
+    files = os.listdir(directory)
+
+
+    def path(file):
+        return directory + '\\' + file
+    
+    #Get subfolders in directory
+    paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
+    
+    data = [get_SMSR_filtered_measurements(e) for e in paths_dir]
+
+
+    return data
+
+
+#Extract data from the SMSR filtered measurement in a given directory
+def get_SMSR_filtered_measurements(directory: str):
+    """Method to extract spectra from the SMSR filtered data taken in a lab session. 
+    
+    Gets DshSpectrum classes in full (30 MHz typ.) span and close (2-30 MHz tpy.) span
+    as well as OSA spectrum if present
+
+    Args:
+        directory (str): Single measurement folder path.
+        Example directory:
+        "O:\\Tech_Photonics\\Projects\\Narrow Linewidth\\MFB Chips
+        \\Chip 3 Feedback measurements\\Measurements_2024-02-22
+        \\2024-02-22_12-01-21single_measurement_"
+
+
+    Returns:
+        dsh_full: instance of DshSpectrum
+            DSH spectrum of the full span
+        dsh_close: instance of DshSpectrum
+            DSH spectrum of the close span
+        osa : instance of OsaSpectrum
+            Full span OSA spectrum
+    """
+    #THERE SHOULD BE A SIMPLER IMPLEMENTATION OF THIS METHOD
+    files = os.listdir(directory)
+
+    def path(file):
+        return directory + '\\' + file
+    
+    #Sort out png files
+    txt_files = [file for file in files if file.endswith('.txt')]
+
+    csv_files_path = [path(file) for file in files if file.endswith('.csv')]
+
+    zoom_files = [file for file in files if file.endswith('zoom.txt')]
+
+    number_meas = len(zoom_files)
+    
+    #Placeholders for the different paths
+    path_full_prev = [None for _ in range(number_meas)]
+    path_full_after = [None for _ in range(number_meas)]
+    path_close = [None for _ in range(number_meas)]
+
+    path_RIN = None
+
+    for txt_file in txt_files:
+
+        if "zoom" in txt_file:
+
+            number = int(txt_file[3])
+
+            path_close[number-1] = path(txt_file)
+
+            path_full_prev[number-1] = path(f'no {number-1}full.txt')
+            path_full_after[number-1] = path(f'no {number}full.txt')
+
+        if "OSA_full_spectrum" in txt_file:
+            path_osa = path(txt_file)
+
+        if "PSD" in txt_file:
+            path_RIN = path(txt_file)
+
+
+    dsh_full_prev = [DshSpectrum(path) for path in path_full_prev]
+    dsh_full_after = [DshSpectrum(path) for path in path_full_after]
+
+    dsh_close = [DshSpectrum(path, center=76) for path in path_close]
+
+    if path_osa == None:
+        osa = None
+    else:
+        osa = OsaSpectrum(path_osa)
+
+
+    if path_RIN == None:
+        RIN = None
+    else:
+        RIN = RINSpectrum(path_RIN)
+
+    for time_osc_path in csv_files_path: #Time series RIN
+        if time_osc_path == None:
+            time_osc = None
+        else:
+            time_osc = time_osc_spectrum(time_osc_path)
+
+
+    return dsh_full_prev, dsh_full_after, dsh_close, osa, RIN, time_osc
+
+
+
 
 
 
@@ -520,3 +644,129 @@ class OsaSpectrum:
         plt.ylim(-80,0)
         plt.xlabel('Wavelength [nm]')
         plt.ylabel('Power [dBm]')
+
+
+
+class RINSpectrum:
+    """Class representing an OSA spectrum
+    """
+
+    def __init__(self, path) -> None:
+        """Makes instance of a RIN spectrum.
+
+        Parameters
+        ----------
+        path : str
+            Path to the RIN spectrum 
+        """
+        freqs, ps, header = self.get_data(path)
+        
+        self.freqs = freqs
+        self.powers = ps
+
+        self.header = header
+        self.peak_power = max(ps)
+
+    def get_data(self, path):
+        """Returns RIN data from file path
+
+        Parameters
+        ----------
+        path : str
+            path to RIN spectrum
+
+        Returns
+        -------
+        wav : numpy.ndarray
+            array of frequencies
+        ps : numpy.ndarray
+            array of powers
+        """
+
+        header, df = self.load_csv_with_header(path,header_lines_count=13)
+
+        freq = df[:,0] #Hz
+        ps = df[:,1] #dB/Hz
+
+        return freq, ps, header
+    
+    def load_csv_with_header(filename, header_lines_count=12, delimiter=','):
+        header_lines = []
+        with open(filename, 'r') as file:
+            for _ in range(header_lines_count):
+                header_lines.append(file.readline().strip())
+        
+            data = np.loadtxt(file, delimiter=delimiter)
+    
+        return header_lines, data
+    
+    def plot(self):
+        """Plots OSA spectrum
+        """
+        plt.plot(self.freqs,self.powers)
+        plt.ylim(-130,0)
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('Power [dB/Hz]')
+
+
+
+class time_osc_spectrum:
+    """Class representing an OSA spectrum
+    """
+
+    def __init__(self, path) -> None:
+        """Makes instance of a RIN spectrum.
+
+        Parameters
+        ----------
+        path : str
+            Path to the RIN spectrum 
+        """
+        times, voltages, header = self.get_data(path)
+        
+        self.times = times
+        self.voltages= voltages
+        self.peak_voltage = max(voltages)
+        self.header = header
+
+    def get_data(self, path):
+        """Returns time oscillation spectrum data from file path
+
+        Parameters
+        ----------
+        path : str
+            path to time osc spectrum
+
+        Returns
+        -------
+        wav : numpy.ndarray
+            array of time
+        ps : numpy.ndarray
+            array of voltages
+        """
+        header, df = self.load_csv_with_header(path,header_lines_count=12)
+
+        times = df[:,0] #Hz
+        voltages = df[:,1] #dB/Hz
+
+
+
+        return times, voltages, header
+    
+    def load_csv_with_header(filename, header_lines_count=12, delimiter=','):
+        header_lines = []
+        with open(filename, 'r') as file:
+            for _ in range(header_lines_count):
+                header_lines.append(file.readline().strip())
+        
+            data = np.loadtxt(file, delimiter=delimiter)
+    
+        return header_lines, data
+    
+    def plot(self):
+        """Plots OSA spectrum
+        """
+        plt.plot(self.freqs,self.powers)
+        plt.ylim(0,0.5)
+        plt.xlabel('Time [s]')
+        plt.ylabel('Voltages [V]')
