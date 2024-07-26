@@ -23,11 +23,19 @@ class LWA:
     
     def get_header(self):
         lines = []
-        with open(self.path) as file:
-            for i in range(self.header_lines):
-                line = file.readline()
-                lines.append(line.split()[1:])
-        return lines
+        try:
+            with open(self.path) as file:
+                for _ in range(self.header_lines):
+                    line = file.readline()
+                    lines.append(line.split()[1:])
+            return lines
+        
+        except UnicodeDecodeError:
+            with open(self.path,'rb') as file:
+                for _ in range(self.header_lines):
+                    line = file.readline().decode("unicode_escape")
+                    lines.append(line.split()[1:])
+            return lines
     
     def get_type(self):
         lines = self.get_header()

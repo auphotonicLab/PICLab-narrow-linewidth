@@ -84,7 +84,7 @@ class DshSpectrum:
             powers: array of ESA powers in dBm
         """
         try:
-            print(path)
+            #print(path)
             data = np.loadtxt(path)
         except ValueError:
             data = np.loadtxt(path, delimiter=',')
@@ -486,16 +486,23 @@ def get_SMSR_filtered_data(directory):
         return directory + '\\' + file
     
     #Get subfolders in directory
-    paths_dir = [path(file) for file in files if os.path.isdir(path(file))]
-    
-    data = [get_SMSR_filtered_measurements(e) for e in paths_dir]
+    paths_dir = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' in file]
 
+    no_meas = len(paths_dir)
+
+    results_dir  = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' not in file]
+
+    
+    data = [None for _ in range(no_meas)]
+
+    for i in range(no_meas):
+        data[i] = get_SMSR_filtered_measurements(paths_dir[i],results_dir[i])
 
     return data
 
 
 #Extract data from the SMSR filtered measurement in a given directory
-def get_SMSR_filtered_measurements(directory: str):
+def get_SMSR_filtered_measurements(directory: str, result_directory: str):
     """Method to extract spectra from the SMSR filtered data taken in a lab session. 
     
     Gets DshSpectrum classes in full (30 MHz typ.) span and close (2-30 MHz tpy.) span
@@ -523,6 +530,12 @@ def get_SMSR_filtered_measurements(directory: str):
     def path(file):
         return directory + '\\' + file
     
+    def path_results(file):
+        return result_directory + '\\' + file
+    
+    result_file_path = path_results(os.listdir(result_directory)[0])
+
+    
     #Sort out png files
     txt_files = [file for file in files if file.endswith('.txt')]
 
@@ -539,20 +552,28 @@ def get_SMSR_filtered_measurements(directory: str):
 
     path_osa = None
 
+    time_osc = None
+
     path_RIN = None
 
     counter = 0
+
 
     for txt_file in txt_files:
 
         if "zoom" in txt_file:
 
+            path_close[counter] = path(txt_file)
+
+            if os.path.exists(path(f'no {counter}full.txt')):
+                path_full_prev[counter] = path(f'no {counter}full.txt')
+                path_full_after[counter] = path(f'no {counter+1}full.txt')
+
+            else:
+                path_full_prev[counter] = path(f'no {counter}full_prev.txt')
+                path_full_after[counter] = path(f'no {counter}full_after.txt')
+
             counter +=1
-
-            path_close[counter-1] = path(txt_file)
-
-            path_full_prev[counter-1] = path(f'no {counter-1}full.txt')
-            path_full_after[counter-1] = path(f'no {counter}full.txt')
 
         if "OSA_full_spectrum" in txt_file:
             path_osa = path(txt_file)
@@ -578,16 +599,64 @@ def get_SMSR_filtered_measurements(directory: str):
         RIN = RINSpectrum(path_RIN)
 
     for time_osc_path in csv_files_path: #Time series RIN
-        if time_osc_path == None:
-            time_osc = None
-        else:
+        if time_osc_path != None:
             time_osc = time_osc_spectrum(time_osc_path)
 
-
-    return dsh_full_prev, dsh_full_after, dsh_close, osa, RIN, time_osc
-
+    params_dict = extract_txt_header_dict(result_file_path,header_lines_count=4)
 
 
+    return dsh_full_prev, dsh_full_after, dsh_close, osa, RIN, time_osc, params_dict
+
+
+
+def extract_txt_header_dict(filename, header_lines_count=12, delimiter=','):
+        header_lines = []
+        with open(filename, 'r') as file:
+            for _ in range(header_lines_count):
+                header_lines.append(file.readline().strip().replace('#','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=').replace('#  ','').replace('# ',''))
+
+        
+            header_dict = extract_params(header_lines)
+            #print(header_dict)
+    
+        return header_dict
+
+
+def extract_params(header:list):
+    params_dict = {}
+
+    if sum(['=' in file for file in header])<1:
+        pass
+    else:
+        #Creating the dictionary
+        for parameter_string in header[:-1]:
+
+            param_list = parameter_string.split('=')
+
+            key = param_list[0]
+            value = param_list[1]
+            #Finding the first digit of the float in the value part of the string
+            for j, val in enumerate(value):
+                if val.isdigit() or val=='-':
+                    first_placement = j
+                    break
+            #Finding the last digit of the float in the value part of the string
+            for j in range(len(value)-1,-1,-1):
+
+                if value[j].isdigit():
+                    last_placement = j+1
+                    break
+            #Obtaining the full number and turning it into a float
+            try:
+                float_value = float(value[first_placement:last_placement])
+
+            except ValueError:
+                float_value = value
+                #print('The value for' + key + 'is not a float')
+            #Saving the key and value in the dictionary
+            params_dict[key] = float_value
+
+    return params_dict
 
 
 
@@ -670,6 +739,8 @@ class RINSpectrum:
         path : str
             Path to the RIN spectrum 
         """
+        self.fb_power = os.path.basename(os.path.dirname(path))[23:-2] #[µW]
+
         freqs, ps, header = self.get_data(path)
         
         self.freqs = freqs
@@ -701,15 +772,60 @@ class RINSpectrum:
 
         return freq, ps, header
     
-    def load_csv_with_header(filename, header_lines_count=12, delimiter=','):
+    def load_csv_with_header(self, filename, header_lines_count=12, delimiter=','):
         header_lines = []
         with open(filename, 'r') as file:
             for _ in range(header_lines_count):
-                header_lines.append(file.readline().strip())
+                header_lines.append(file.readline().strip().replace('#','').replace(', ',',').replace(':','=').replace(' =','=').replace('= ','=').replace('#  ','').replace('# ',''))
+
         
             data = np.loadtxt(file, delimiter=delimiter)
+
+            header_dict = self.extract_params(header_lines)
+            #print(header_dict)
+
+            self.intrinsic = header_dict['Intrinsic']
     
-        return header_lines, data
+        return header_dict, data
+    
+
+
+    def extract_params(self,header:list):
+        params_dict = {}
+
+        if sum(['=' in file for file in header])<1:
+            pass
+        else:
+            #Creating the dictionary
+            for parameter_string in header[:-1]:
+
+                param_list = parameter_string.split('=')
+
+                key = param_list[0]
+                value = param_list[1]
+                #Finding the first digit of the float in the value part of the string
+                for j, val in enumerate(value):
+                    if val.isdigit() or val=='-':
+                        first_placement = j
+                        break
+                #Finding the last digit of the float in the value part of the string
+                for j in range(len(value)-1,-1,-1):
+
+                    if value[j].isdigit():
+                        last_placement = j+1
+                        break
+                #Obtaining the full number and turning it into a float
+                try:
+                    float_value = float(value[first_placement:last_placement])
+
+                except ValueError:
+                    float_value = value
+                    #print('The value for' + key + 'is not a float')
+                #Saving the key and value in the dictionary
+                params_dict[key] = float_value
+
+        return params_dict
+
     
     def plot(self):
         """Plots OSA spectrum
@@ -764,7 +880,7 @@ class time_osc_spectrum:
 
         return times, voltages, header
     
-    def load_csv_with_header(filename, header_lines_count=12, delimiter=','):
+    def load_csv_with_header(self,filename, header_lines_count=12, delimiter=','):
         header_lines = []
         with open(filename, 'r') as file:
             for _ in range(header_lines_count):
@@ -777,7 +893,7 @@ class time_osc_spectrum:
     def plot(self):
         """Plots OSA spectrum
         """
-        plt.plot(self.freqs,self.powers)
+        plt.plot(self.times,self.voltages)
         plt.ylim(0,0.5)
         plt.xlabel('Time [s]')
         plt.ylabel('Voltages [V]')
