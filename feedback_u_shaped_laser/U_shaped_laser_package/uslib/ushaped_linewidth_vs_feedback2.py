@@ -14,22 +14,28 @@ from scipy.stats import iqr
 from file_management_lib import get_paths, get_header
 from lwa_lib import LWA
 
+fontsize=20
+plt.rcParams['axes.labelsize'] = fontsize
+
 directory = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\02-7"
 directory2 = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\05-7"
 directory3 = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\09-7"
 directory4 = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\10-7"
 directory5 = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\16-07"
+directory6 = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\23-7"
 
 paths = get_paths(directory)
 paths2 = get_paths(directory2)
 
 lwa_path  = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\10-7\2024-07-10_15-14-11\PSD_1e-05.txt"
+rin_path = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\16-07\RINvsFB.txt"
 
 psd  =LWA(lwa_path)
 
 paths3 = []
 paths4 = []
 paths5 = []
+paths6 = []
 
 for dataset in get_paths(directory4):
     for path in get_paths(dataset):
@@ -40,15 +46,30 @@ for dataset in get_paths(directory4):
     paths4.append([result,LWA(lwa)])
     
 for dataset in get_paths(directory5):
-    if ('fb' not in dataset) and ('.txt' not in dataset) and ('.csv' not in dataset) and ('.png' not in dataset) and ('Thumbs' not in dataset):
+    if ('fb' not in dataset) and ('.txt' not in dataset) and ('.csv' not in dataset) and ('.png' not in dataset) and ('Thumbs' not in dataset) and ('bad' not in dataset) and ('pdf' not in dataset):
         for path in get_paths(dataset):
             if 'result' in path:
                 result = path
             if 'PSD' in path:
                 lwa = path
             paths5.append([result,LWA(lwa)])
+            
+for dataset in get_paths(directory6):
+    if ('fb' not in dataset) and ('.txt' not in dataset) and ('.csv' not in dataset) and ('.png' not in dataset) and ('Thumbs' not in dataset) and ('bad' not in dataset) and ('pdf' not in dataset):
+        for path in get_paths(dataset):
+            if 'result' in path:
+                result = path
+            if 'OSA' in path:
+                osa = path
+        paths6.append([result,osa])
 
 
+def get_rin():
+    df = pd.read_csv(rin_path,header=3,
+                     encoding="ISO-8859-1",delim_whitespace=True)
+    fb = df.values[:,0]
+    rin = df.values[:,1]
+    return fb, rin
 
 def get_data(path, plot=False):
     df = pd.read_csv(path,header=3,
@@ -88,7 +109,28 @@ def get_data2(path):
     delay = int(float(header[0][1]))
     
     return linewidths, feedback_power, delay
-        
+
+def get_data3(path):
+    df = pd.read_csv(path,header=4,
+                     encoding="ISO-8859-1",delimiter=',')
+    linewidths = df.values[:,0]
+    smsrs = df.values[:,1]
+    
+    header = get_header(path,length=4)
+    feedback_power = float(header[2][2])
+    delay = int(float(header[0][1]))
+    wavelength = float(header[3][1])
+    
+    return linewidths, wavelength
+
+def get_osa_data(path):
+    df = pd.read_csv(path,header=3,
+                     encoding="ISO-8859-1",delimiter=',')
+    wavelengths = df.values[:,0]
+    ps = df.values[:,1]
+    
+    return wavelengths, ps - max(ps)
+
 def plot_data():
     result = defaultdict(list)     
     
@@ -131,49 +173,102 @@ def linewidth_theory(feedback_power, nu_0, beta):
     return nu_0 / (1 + tau*beta*np.sqrt(feedback_power))**2
 
 powers = np.logspace(-7, 2, 1000)
-fig, ax = plt.subplots(figsize=(12,9))
+
 #plt.plot(powers,f(powers,1.5e3),'--',label='Theory')
-ax.plot(powers,linewidth_theory(powers,900e3,2.5e8),'--',label='Theory',color='grey')
+
 #plt.axhline(300,color='grey',linestyle='--', label = 'Linewidth floor')
 
 #fig2, ax2 = plt.subplots()
 
+def IQR_filter(linewidths):
+    Q1 = np.percentile(linewidths,25,method='midpoint')
+    Q3 = np.percentile(linewidths,75,method='midpoint')
+    iqr_number = iqr(linewidths, interpolation='midpoint')
+    linewidths_filtered = []
+    for linewidth in linewidths:
+        if (linewidth < Q3+1.5*iqr_number and linewidth > Q1-1.5*iqr_number):
+            linewidths_filtered.append(linewidth)
+    return linewidths_filtered
+
 def plot_dataset(paths):
+    fig, ax = plt.subplots(figsize=(10,7))
+    ax.plot(powers,linewidth_theory(powers,1e6,2.5e8)/1e3,'--',label='Theory',color='grey')
+    lw_floor= []
     for path, lwa in paths:
-        linewidths, feedback_power, delay = get_data2(path)
-        iqr_number = iqr(linewidths, interpolation='midpoint')
-        
+        linewidths, feedback_power, delay = get_data2(path)    
         color_dict = {30: 'blue',
                       100: 'red',
                       700: 'green',
                       3000: 'black'}
         
-        Q1 = np.percentile(linewidths,25,method='midpoint')
-        Q3 = np.percentile(linewidths,75,method='midpoint')
-        
-        linewidths_filtered = []
-        for linewidth in linewidths:
-            if (linewidth < Q3+1.5*iqr_number and linewidth > Q1-1.5*iqr_number):
-                linewidths_filtered.append(linewidth)
-        ax.errorbar(feedback_power, np.mean(linewidths_filtered), yerr = np.std(linewidths_filtered), fmt= '.', color = color_dict[delay])
+        linewidths_filtered = IQR_filter(linewidths)
+        ax.errorbar(feedback_power, np.mean(linewidths_filtered)/1e3, yerr = np.std(linewidths_filtered)/1e3, fmt= '.', color = 'blue')
+        if feedback_power > 10:
+            lw_floor.append(np.mean(linewidths_filtered))
+        ax.set(xscale='log',
+               yscale='log',
+               xlabel='Feedback power [$\mu$W]',
+               ylabel='Linewidth [kHz]',
+               xlim=[1e-4,1e3],
+               ylim=[3e-1,2e3],
+               yticks=[1e0,1e1,1e2,1e3],
+               yticklabels=[1,10,100,'1k'])
+        ax.set_ylabel('Linewidth [kHz]',color='blue')
+        ax.tick_params(axis='y', labelcolor='blue')
+        labels = [item.get_text() for item in ax.get_yticklabels()]
+
+        #ax2.set(xscale='log',
+        #        yscale='log')
+
         #plt.plot(feedback_power, lwa.get_linewidth(),'b.')
         #plt.plot(feedback_power, lwa.fit_linewidth(lower=2e6,upper=8e6),'g.')
         #ax2.plot(lwa.freqs, lwa.powers)
-
+        
+    
+    ax2 = ax.twinx()  # instantiate a second Axes that shares the same x-axis
+    
+    color = 'red'
+    ax2.set_ylabel('RIN [dB]', color=color)  # we already handled the x-label with ax1
+    
+    fb, rin = get_rin()
+    
+    #ax.legend(fontsize = 20)
+    ax.grid()
+    
+    ax2.plot(fb, rin, '.', color=color)
+    ax2.set(ylim=[-55,-30])
+    ax2.tick_params(axis='y', labelcolor=color)
+    
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    
+    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')   
+    
+def plot_wavelengths(paths):
+    fig, (ax,ax2) = plt.subplots(2,1,figsize=(10,7),sharex='all')
+    for path, osa in paths:
+        linewidths, wavelength = get_data3(path)    
+        
+        linewidths_filtered = IQR_filter(linewidths)
+        #ax.errorbar(wavelength, np.mean(linewidths_filtered), yerr = np.std(linewidths_filtered), fmt= '.', color = 'black')
+        print(min(linewidths_filtered))
+        ax.plot(wavelength,min(linewidths_filtered),'.',color='black')
+        
+        wavelengths, powers = get_osa_data(osa)
+        
+        ax2.plot(wavelengths,powers)
+        
+        ax.set(xscale='linear',
+               yscale='linear',
+               xlabel='Wavelength [nm]',
+               ylabel='Min. linewidth [Hz]',
+               ylim=[0,2000],
+               xlim=[1510,1560],)
+        ax2.set(ylim=[-60,10],
+                ylabel='Optical power [dB]')
+    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_wavelength.pdf", bbox_inches = 'tight')   
 plot_dataset(paths5)
 #plot_dataset(paths4)
 
-ax.set(xscale='log',
-       yscale='log',
-       xlabel='Feedback power [uW]',
-       ylabel='Linewidth [Hz]',
-       xlim=[1e-6,1e3],
-       ylim=[1e2,1e7])
+#plot_wavelengths(paths6)
 
-#ax2.set(xscale='log',
-#        yscale='log')
-
-ax.legend(fontsize = 20)
-ax.grid()
-#plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')
-    
+ 
