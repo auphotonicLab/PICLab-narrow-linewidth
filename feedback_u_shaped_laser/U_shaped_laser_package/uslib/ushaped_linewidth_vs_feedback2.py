@@ -11,8 +11,11 @@ import numpy as np
 import os
 from collections import defaultdict
 from scipy.stats import iqr
-from file_management_lib import get_paths, get_header
-from lwa_lib import LWA
+
+from uslib.file_management_lib import get_paths, get_header
+
+from uslib.lwa_lib import LWA
+
 
 fontsize=20
 plt.rcParams['axes.labelsize'] = fontsize
@@ -207,7 +210,7 @@ def plot_dataset(paths):
             lw_floor.append(np.mean(linewidths_filtered))
         ax.set(xscale='log',
                yscale='log',
-               xlabel='Feedback power [$\mu$W]',
+               xlabel=r'Feedback power [$\mu$W]',
                ylabel='Linewidth [kHz]',
                xlim=[1e-4,1e3],
                ylim=[3e-1,2e3],
@@ -241,7 +244,7 @@ def plot_dataset(paths):
     
     fig.tight_layout()  # otherwise the right y-label is slightly clipped
     
-    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')   
+    #plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')   
     
 def plot_wavelengths(paths):
     fig, (ax,ax2) = plt.subplots(2,1,figsize=(10,7),sharex='all')
@@ -265,7 +268,7 @@ def plot_wavelengths(paths):
                xlim=[1510,1560],)
         ax2.set(ylim=[-60,10],
                 ylabel='Optical power [dB]')
-    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_wavelength.pdf", bbox_inches = 'tight')   
+    #plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_wavelength.pdf", bbox_inches = 'tight')   
 plot_dataset(paths5)
 #plot_dataset(paths4)
 
