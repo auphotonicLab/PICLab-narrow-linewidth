@@ -11,11 +11,8 @@ import numpy as np
 import os
 from collections import defaultdict
 from scipy.stats import iqr
-
-from uslib.file_management_lib import get_paths, get_header
-
-from uslib.lwa_lib import LWA
-
+from file_management_lib import get_paths, get_header
+from lwa_lib import LWA
 
 fontsize=20
 plt.rcParams['axes.labelsize'] = fontsize
@@ -91,7 +88,6 @@ def get_data(path, plot=False):
     header = get_header(path,length=3)
     feedback_power = float(header[2][2])
     delay = float(header[1][2])
-    print(delay)
 
     if plot:
         plt.plot(smsrs,linewidths/1e3,'.')
@@ -120,19 +116,23 @@ def get_data3(path):
     smsrs = df.values[:,1]
     
     header = get_header(path,length=4)
+    output_power = float(header[1][2])
     feedback_power = float(header[2][2])
     delay = int(float(header[0][1]))
     wavelength = float(header[3][1])
     
-    return linewidths, wavelength
+    return linewidths, wavelength, output_power
 
 def get_osa_data(path):
     df = pd.read_csv(path,header=3,
                      encoding="ISO-8859-1",delimiter=',')
     wavelengths = df.values[:,0]
     ps = df.values[:,1]
+    ps_max = max(ps)
+    if np.isnan(ps_max):
+        ps_max = -9.53
     
-    return wavelengths, ps - max(ps)
+    return wavelengths, ps - ps_max 
 
 def plot_data():
     result = defaultdict(list)     
@@ -194,8 +194,9 @@ def IQR_filter(linewidths):
     return linewidths_filtered
 
 def plot_dataset(paths):
+    output_power = 4200
     fig, ax = plt.subplots(figsize=(10,7))
-    ax.plot(powers,linewidth_theory(powers,1e6,2.5e8)/1e3,'--',label='Theory',color='grey')
+    ax.plot(10*np.log10(powers/output_power),linewidth_theory(powers,1e6,2.5e8),'--',label='Theory',color='grey')
     lw_floor= []
     for path, lwa in paths:
         linewidths, feedback_power, delay = get_data2(path)    
@@ -205,18 +206,18 @@ def plot_dataset(paths):
                       3000: 'black'}
         
         linewidths_filtered = IQR_filter(linewidths)
-        ax.errorbar(feedback_power, np.mean(linewidths_filtered)/1e3, yerr = np.std(linewidths_filtered)/1e3, fmt= '.', color = 'blue')
+        ax.errorbar(10*np.log10(feedback_power/output_power), np.mean(linewidths_filtered), yerr = np.std(linewidths_filtered), fmt= '.', color = 'blue')
         if feedback_power > 10:
             lw_floor.append(np.mean(linewidths_filtered))
-        ax.set(xscale='log',
+        ax.set(xscale='linear',
                yscale='log',
-               xlabel=r'Feedback power [$\mu$W]',
-               ylabel='Linewidth [kHz]',
-               xlim=[1e-4,1e3],
-               ylim=[3e-1,2e3],
-               yticks=[1e0,1e1,1e2,1e3],
-               yticklabels=[1,10,100,'1k'])
-        ax.set_ylabel('Linewidth [kHz]',color='blue')
+               xlabel='Feedback ratio [dB]',
+               ylabel='Linewidth [Hz]',
+               xlim=[-77,-5],
+               ylim=[3e2,2e6],
+               yticks=[1e3,1e4,1e5,1e6],
+               yticklabels=['1k','10k','100k','1M'])
+        ax.set_ylabel('Linewidth [Hz]',color='blue')
         ax.tick_params(axis='y', labelcolor='blue')
         labels = [item.get_text() for item in ax.get_yticklabels()]
 
@@ -238,22 +239,21 @@ def plot_dataset(paths):
     #ax.legend(fontsize = 20)
     ax.grid()
     
-    ax2.plot(fb, rin, '.', color=color)
+    ax2.plot(10*np.log10(fb/output_power), rin, '.', color=color)
     ax2.set(ylim=[-55,-30])
     ax2.tick_params(axis='y', labelcolor=color)
     
     fig.tight_layout()  # otherwise the right y-label is slightly clipped
     
-    #plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')   
+    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_feedback.pdf", bbox_inches = 'tight')   
     
 def plot_wavelengths(paths):
     fig, (ax,ax2) = plt.subplots(2,1,figsize=(10,7),sharex='all')
     for path, osa in paths:
-        linewidths, wavelength = get_data3(path)    
+        linewidths, wavelength, output_power = get_data3(path)    
         
         linewidths_filtered = IQR_filter(linewidths)
         #ax.errorbar(wavelength, np.mean(linewidths_filtered), yerr = np.std(linewidths_filtered), fmt= '.', color = 'black')
-        print(min(linewidths_filtered))
         ax.plot(wavelength,min(linewidths_filtered),'.',color='black')
         
         wavelengths, powers = get_osa_data(osa)
@@ -267,11 +267,11 @@ def plot_wavelengths(paths):
                ylim=[0,2000],
                xlim=[1510,1560],)
         ax2.set(ylim=[-60,10],
-                ylabel='Optical power [dB]')
-    #plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_wavelength.pdf", bbox_inches = 'tight')   
-plot_dataset(paths5)
+                ylabel='Relative power [dB]')
+    plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\linewidth_vs_wavelength.pdf", bbox_inches = 'tight')   
+#plot_dataset(paths5)
 #plot_dataset(paths4)
 
-#plot_wavelengths(paths6)
+plot_wavelengths(paths6)
 
  
