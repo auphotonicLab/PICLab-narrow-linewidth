@@ -39,11 +39,18 @@ class LWA:
     
     def get_type(self):
         lines = self.get_header()
-        y_label = lines[12][0]
+        try:
+            y_label = lines[self.header_lines-1][0]
+        except IndexError:
+            y_label = lines[0][0]
+
         if 'Frequency' in y_label:
             return 'PSD'
         if 'Intensity' in y_label:
             return 'RIN'
+        if 'Powermeter' in y_label:
+            return 'Power'
+        
         else:
             print('No type found')
     
