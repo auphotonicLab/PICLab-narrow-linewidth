@@ -481,16 +481,23 @@ def get_SMSR_filtered_data(directory):
     """
     files = os.listdir(directory)
 
-
+    
     def path(file):
         return directory + '\\' + file
     
-    #Get subfolders in directory
-    paths_dir = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' in file]
+    if "ushaped" in directory:
+        paths_dir=[directory]
+
+        results_dir = ["None"]
+    else:
+        #Get subfolders in directory
+        paths_dir = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' in file]
+
+        results_dir  = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' not in file]
+
 
     no_meas = len(paths_dir)
 
-    results_dir  = [path(file) for file in files if os.path.isdir(path(file)) if 'µW' not in file]
 
     
     data = [None for _ in range(no_meas)]
@@ -527,13 +534,17 @@ def get_SMSR_filtered_measurements(directory: str, result_directory: str):
     #THERE SHOULD BE A SIMPLER IMPLEMENTATION OF THIS METHOD
     files = os.listdir(directory)
 
+
     def path(file):
         return directory + '\\' + file
     
     def path_results(file):
         return result_directory + '\\' + file
     
-    result_file_path = path_results(os.listdir(result_directory)[0])
+    if result_directory != "None":
+        result_file_path = path_results(os.listdir(result_directory)[0])
+    else:
+        pass
 
     
     #Sort out png files
@@ -554,7 +565,7 @@ def get_SMSR_filtered_measurements(directory: str, result_directory: str):
 
     time_osc = None
 
-    path_RIN = None
+    path_RIN = []
 
     counter = 0
 
@@ -578,8 +589,8 @@ def get_SMSR_filtered_measurements(directory: str, result_directory: str):
         if "OSA_full_spectrum" in txt_file:
             path_osa = path(txt_file)
 
-        if "PSD" in txt_file:
-            path_RIN = path(txt_file)
+        if "PSD" in txt_file or "RIN" in txt_file :
+            path_RIN.append(path(txt_file))
 
 
     dsh_full_prev = [DshSpectrum(path) for path in path_full_prev]
@@ -593,16 +604,23 @@ def get_SMSR_filtered_measurements(directory: str, result_directory: str):
         osa = OsaSpectrum(path_osa)
 
 
-    if path_RIN == None:
+    if len(path_RIN) == 0:
         RIN = None
+    elif len(path_RIN) == 1:
+        RIN = RINSpectrum(path_RIN[0])
     else:
-        RIN = RINSpectrum(path_RIN)
+        RIN = []
+        for rin_path in path_RIN:
+            RIN.append(RINSpectrum(rin_path))
 
     for time_osc_path in csv_files_path: #Time series RIN
         if time_osc_path != None:
             time_osc = time_osc_spectrum(time_osc_path)
 
-    params_dict = extract_txt_header_dict(result_file_path,header_lines_count=4)
+    if result_directory != "None":
+        params_dict = extract_txt_header_dict(result_file_path,header_lines_count=4)
+    else:
+        params_dict = "None"
 
 
     return dsh_full_prev, dsh_full_after, dsh_close, osa, RIN, time_osc, params_dict
@@ -739,7 +757,10 @@ class RINSpectrum:
         path : str
             Path to the RIN spectrum 
         """
-        self.fb_power = os.path.basename(os.path.dirname(path))[23:-2] #[µW]
+        if "ushaped" in os.path.basename(os.path.dirname(path)):
+            self.fb_power = os.path.basename(path)[10:-9]
+        else:
+            self.fb_power = os.path.basename(os.path.dirname(path))[23:-2] #[µW]
 
         freqs, ps, header = self.get_data(path)
         
