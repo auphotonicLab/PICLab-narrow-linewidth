@@ -485,7 +485,7 @@ def get_SMSR_filtered_data(directory):
     def path(file):
         return directory + '\\' + file
     
-    if "ushaped" in directory:
+    if "ushaped" or "20-09" or "24-09" in directory:
         paths_dir=[directory]
 
         results_dir = ["None"]
@@ -759,6 +759,19 @@ class RINSpectrum:
         """
         if "ushaped" in os.path.basename(os.path.dirname(path)):
             self.fb_power = os.path.basename(path)[10:-9]
+
+        elif "20-09" in os.path.basename(os.path.dirname(path)):
+            print(os.path.basename(path),os.path.basename(path)[22:-9])
+
+            self.fb_power = os.path.basename(path)[22:-9]
+
+        elif "24-09" in os.path.basename(os.path.dirname(path)):
+            print(os.path.basename(path),os.path.basename(path)[15:-9])
+
+            self.fb_power = os.path.basename(path)[15:-9]
+
+            self.pm_power = os.path.basename(path)[9:-9]
+
         else:
             self.fb_power = os.path.basename(os.path.dirname(path))[23:-2] #[µW]
 
