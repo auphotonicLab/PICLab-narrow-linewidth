@@ -1,15 +1,12 @@
-U-shaped Laser Package
-=======================
+# U-shaped Laser Package
 
 A Python package for analyzing laser measurements, with a focus on U-shaped laser configurations and linewidth measurements.
 
-Documentation
-------------
+## Documentation
 
-For detailed documentation, including installation instructions, usage examples, and API reference, visit our `Read the Docs page <https://u-shaped-laser-package.readthedocs.io/>`_.
+For detailed documentation, including installation instructions, usage examples, and API reference, visit our [Read the Docs page](https://u-shaped-laser-package.readthedocs.io/).
 
-Overview
---------
+## Overview
 
 This package provides tools for analyzing various laser measurements including:
 
@@ -19,15 +16,13 @@ This package provides tools for analyzing various laser measurements including:
 * Side Mode Suppression Ratio (SMSR) measurements
 * Coherent Self-Heterodyne (CSH) measurements
 
-Installation
-------------
+## Installation
 
-.. code-block:: bash
+```bash
+pip install u_shaped_lib
+```
 
-    pip install u_shaped_lib
-
-Requirements
------------
+## Dependencies
 
 * numpy
 * pandas
@@ -35,13 +30,11 @@ Requirements
 * scipy
 * cycler
 
-License
--------
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-Authors
--------
+## Authors
 
 * Simon T. Thomsen
 * Jeppe H. Surrow 
