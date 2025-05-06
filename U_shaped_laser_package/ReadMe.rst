@@ -3,6 +3,11 @@ U-shaped Laser Package
 
 A Python package for analyzing laser measurements, with a focus on U-shaped laser configurations and linewidth measurements.
 
+Documentation
+------------
+
+For detailed documentation, including installation instructions, usage examples, and API reference, visit our `Read the Docs page <https://u-shaped-laser-package.readthedocs.io/>`_.
+
 Overview
 --------
 
