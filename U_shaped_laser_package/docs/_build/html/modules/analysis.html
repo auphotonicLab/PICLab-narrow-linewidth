@@ -1,0 +1,657 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analysis Tools &mdash; U-shaped Laser Package  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Visualization Tools" href="visualization.html" />
+    <link rel="prev" title="Data Processing Modules" href="data.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            U-shaped Laser Package
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="core.html">Core Analysis Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data.html">Data Processing Modules</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Analysis Tools</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.gauss_log"><code class="docutils literal notranslate"><span class="pre">gauss_log()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.lor_log"><code class="docutils literal notranslate"><span class="pre">lor_log()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.del_o"><code class="docutils literal notranslate"><span class="pre">del_o()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.time_delay"><code class="docutils literal notranslate"><span class="pre">time_delay()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.Lorentzian_dB"><code class="docutils literal notranslate"><span class="pre">Lorentzian_dB()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.Lor_dB"><code class="docutils literal notranslate"><span class="pre">Lor_dB()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.PSD_real_laser_dB"><code class="docutils literal notranslate"><span class="pre">PSD_real_laser_dB()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.zeta_func"><code class="docutils literal notranslate"><span class="pre">zeta_func()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.zeta_zero"><code class="docutils literal notranslate"><span class="pre">zeta_zero()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.f_minus"><code class="docutils literal notranslate"><span class="pre">f_minus()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.q_func"><code class="docutils literal notranslate"><span class="pre">q_func()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.dirac_delta"><code class="docutils literal notranslate"><span class="pre">dirac_delta()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.DSH_ideal_PSD"><code class="docutils literal notranslate"><span class="pre">DSH_ideal_PSD()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.Gaussian_dB"><code class="docutils literal notranslate"><span class="pre">Gaussian_dB()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.Gauss_dB"><code class="docutils literal notranslate"><span class="pre">Gauss_dB()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.zeta_fit"><code class="docutils literal notranslate"><span class="pre">zeta_fit()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.fit_functions.R_squared"><code class="docutils literal notranslate"><span class="pre">R_squared()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA"><code class="docutils literal notranslate"><span class="pre">LWA</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.path"><code class="docutils literal notranslate"><span class="pre">LWA.path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.header_lines"><code class="docutils literal notranslate"><span class="pre">LWA.header_lines</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.type"><code class="docutils literal notranslate"><span class="pre">LWA.type</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.freqs"><code class="docutils literal notranslate"><span class="pre">LWA.freqs</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.powers"><code class="docutils literal notranslate"><span class="pre">LWA.powers</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.df"><code class="docutils literal notranslate"><span class="pre">LWA.df</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.get_header"><code class="docutils literal notranslate"><span class="pre">LWA.get_header()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.get_type"><code class="docutils literal notranslate"><span class="pre">LWA.get_type()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.get_linewidth"><code class="docutils literal notranslate"><span class="pre">LWA.get_linewidth()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.fit_linewidth"><code class="docutils literal notranslate"><span class="pre">LWA.fit_linewidth()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.lwa_lib.LWA.plot"><code class="docutils literal notranslate"><span class="pre">LWA.plot()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="visualization.html">Visualization Tools</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">U-shaped Laser Package</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Analysis Tools</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/modules/analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="analysis-tools">
+<h1>Analysis Tools<a class="headerlink" href="#analysis-tools" title="Link to this heading"></a></h1>
+<p id="module-u_shaped_lib.fit_functions">Module containing mathematical functions for fitting laser measurement data.</p>
+<p>This module provides various mathematical functions used for fitting and analyzing
+laser measurement data, including Gaussian and Lorentzian functions, time delay
+calculations, and power spectral density (PSD) functions.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.gauss_log">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">gauss_log</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#gauss_log"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.gauss_log" title="Link to this definition"></a></dt>
+<dd><p>Gaussian function in logarithmic scale (base e).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>a</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Width parameter</p></li>
+<li><p><strong>b</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Offset parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Gaussian function values in log scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.lor_log">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">lor_log</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#lor_log"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.lor_log" title="Link to this definition"></a></dt>
+<dd><p>Lorentzian function in logarithmic scale (base 10).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>a</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>df</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Lorentzian function values in log scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.del_o">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">del_o</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#del_o"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.del_o" title="Link to this definition"></a></dt>
+<dd><p>Transform frequency to angular frequency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Frequency in Hz</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Angular frequency in rad/s</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.time_delay">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">time_delay</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fiber_length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#time_delay"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.time_delay" title="Link to this definition"></a></dt>
+<dd><p>Calculate time delay in an optical fiber.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fiber_length</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Length of the fiber in meters</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Time delay in seconds</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.Lorentzian_dB">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">Lorentzian_dB</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">omega</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_center</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#Lorentzian_dB"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.Lorentzian_dB" title="Link to this definition"></a></dt>
+<dd><p>Lorentzian function in dB scale.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>omega</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Angular frequencies</p></li>
+<li><p><strong>A</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>freq_center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Center frequency</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Lorentzian function values in dB scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.Lor_dB">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">Lor_dB</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#Lor_dB"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.Lor_dB" title="Link to this definition"></a></dt>
+<dd><p>Alternative Lorentzian function in dB scale.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>a</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>df</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Lorentzian function values in dB scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.PSD_real_laser_dB">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">PSD_real_laser_dB</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">omega</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_center</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#PSD_real_laser_dB"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.PSD_real_laser_dB" title="Link to this definition"></a></dt>
+<dd><p>Real part of laser power spectral density in dB scale.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>omega</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Angular frequencies</p></li>
+<li><p><strong>A</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>freq_center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Center frequency</p></li>
+<li><p><strong>a1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Gaussian width parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>PSD values in dB scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.zeta_func">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">zeta_func</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_d</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#zeta_func"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.zeta_func" title="Link to this definition"></a></dt>
+<dd><p>Zeta function for laser linewidth calculations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Frequencies</p></li>
+<li><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>t_d</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Time delay</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Zeta function values</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.zeta_zero">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">zeta_zero</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_d</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#zeta_zero"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.zeta_zero" title="Link to this definition"></a></dt>
+<dd><p>Zero-frequency value of zeta function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>t_d</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Time delay</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Zero-frequency zeta value</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.f_minus">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">f_minus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_shift</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#f_minus"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.f_minus" title="Link to this definition"></a></dt>
+<dd><p>Frequency shift function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input frequencies</p></li>
+<li><p><strong>freq_shift</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Frequency shift value</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Shifted frequencies</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.q_func">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">q_func</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">A_1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A_2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#q_func"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.q_func" title="Link to this definition"></a></dt>
+<dd><p>Q-function for amplitude ratio calculations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>A_1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – First amplitude</p></li>
+<li><p><strong>A_2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Second amplitude</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Q-function value</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.dirac_delta">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">dirac_delta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">limit</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#dirac_delta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.dirac_delta" title="Link to this definition"></a></dt>
+<dd><p>Approximate Dirac delta function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>limit</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Width of the approximation</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Approximate delta function values</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.DSH_ideal_PSD">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">DSH_ideal_PSD</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_shift</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">del_f</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_d</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">limit</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#DSH_ideal_PSD"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.DSH_ideal_PSD" title="Link to this definition"></a></dt>
+<dd><p>Ideal power spectral density for delayed self-heterodyne measurements.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Frequencies</p></li>
+<li><p><strong>freq_shift</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Frequency shift</p></li>
+<li><p><strong>del_f</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>t_d</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Time delay</p></li>
+<li><p><strong>limit</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Delta function limit</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>PSD values</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.Gaussian_dB">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">Gaussian_dB</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_center</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#Gaussian_dB"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.Gaussian_dB" title="Link to this definition"></a></dt>
+<dd><p>Gaussian function in dB scale.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>A</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>freq_center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Center frequency</p></li>
+<li><p><strong>var</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Variance parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Gaussian function values in dB scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.Gauss_dB">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">Gauss_dB</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#Gauss_dB"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.Gauss_dB" title="Link to this definition"></a></dt>
+<dd><p>Simplified Gaussian function in dB scale.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Input values</p></li>
+<li><p><strong>a</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Amplitude parameter</p></li>
+<li><p><strong>b</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Width parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Gaussian function values in dB scale</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.zeta_fit">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">zeta_fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">linewidth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#zeta_fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.zeta_fit" title="Link to this definition"></a></dt>
+<dd><p>Zeta function for fitting laser linewidth data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freq</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Frequencies</p></li>
+<li><p><strong>linewidth</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Linewidth parameter</p></li>
+<li><p><strong>offset</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Offset parameter</p></li>
+<li><p><strong>length</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Fiber length</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Fitted zeta function values</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.fit_functions.R_squared">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.fit_functions.</span></span><span class="sig-name descname"><span class="pre">R_squared</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fitfunc_evaluated</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/fit_functions.html#R_squared"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.fit_functions.R_squared" title="Link to this definition"></a></dt>
+<dd><p>Calculate R-squared value for fit quality assessment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Original data</p></li>
+<li><p><strong>fitfunc_evaluated</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Evaluated fit function</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>R-squared value</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p id="module-u_shaped_lib.lwa_lib">Module for analyzing laser linewidth measurements.</p>
+<p>This module provides a class for loading, processing and analyzing laser linewidth
+measurements, including frequency noise (FN) and relative intensity noise (RIN) data.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">u_shaped_lib.lwa_lib.</span></span><span class="sig-name descname"><span class="pre">LWA</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_lines</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">13</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Class for analyzing laser linewidth measurements.</p>
+<p>This class provides methods to load and process laser linewidth data from various
+measurement files, including frequency noise (FN) and relative intensity noise (RIN)
+measurements.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.path">
+<span class="sig-name descname"><span class="pre">path</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.path" title="Link to this definition"></a></dt>
+<dd><p>Path to the measurement file</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.header_lines">
+<span class="sig-name descname"><span class="pre">header_lines</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.header_lines" title="Link to this definition"></a></dt>
+<dd><p>Number of header lines in the file</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.type">
+<span class="sig-name descname"><span class="pre">type</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.type" title="Link to this definition"></a></dt>
+<dd><p>Type of measurement (‘PSD’, ‘RIN’, or ‘Power’)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.freqs">
+<span class="sig-name descname"><span class="pre">freqs</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.freqs" title="Link to this definition"></a></dt>
+<dd><p>Array of frequency values</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.powers">
+<span class="sig-name descname"><span class="pre">powers</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.powers" title="Link to this definition"></a></dt>
+<dd><p>Array of power values</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.df">
+<span class="sig-name descname"><span class="pre">df</span></span><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.df" title="Link to this definition"></a></dt>
+<dd><p>Frequency step size</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.get_header">
+<span class="sig-name descname"><span class="pre">get_header</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA.get_header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.get_header" title="Link to this definition"></a></dt>
+<dd><p>Extract header information from the measurement file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of header lines split into components</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.get_type">
+<span class="sig-name descname"><span class="pre">get_type</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA.get_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.get_type" title="Link to this definition"></a></dt>
+<dd><p>Determine the type of measurement from the header.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Type of measurement (‘PSD’, ‘RIN’, or ‘Power’)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.get_linewidth">
+<span class="sig-name descname"><span class="pre">get_linewidth</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA.get_linewidth"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.get_linewidth" title="Link to this definition"></a></dt>
+<dd><p>Extract linewidth value from the header.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Linewidth value in Hz</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.fit_linewidth">
+<span class="sig-name descname"><span class="pre">fit_linewidth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lower</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e6</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">upper</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10e6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA.fit_linewidth"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.fit_linewidth" title="Link to this definition"></a></dt>
+<dd><p>Fit linewidth using data in specified frequency range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lower</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><em>optional</em>) – Lower frequency bound for fitting, by default 1e6</p></li>
+<li><p><strong>upper</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><em>optional</em>) – Upper frequency bound for fitting, by default 10e6</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Fitted linewidth value in Hz</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.lwa_lib.LWA.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'log'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/lwa_lib.html#LWA.plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.lwa_lib.LWA.plot" title="Link to this definition"></a></dt>
+<dd><p>Plot the measurement data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>scale</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>, </em><em>optional</em>) – Scale type (‘log’ or ‘lin’), by default ‘log’</p></li>
+<li><p><strong>factor</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><em>optional</em>) – Scaling factor for the power values, by default 1</p></li>
+<li><p><strong>label</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>, </em><em>optional</em>) – Plot label, by default ‘’</p></li>
+<li><p><strong>title</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>, </em><em>optional</em>) – Plot title, by default ‘’</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="data.html" class="btn btn-neutral float-left" title="Data Processing Modules" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="visualization.html" class="btn btn-neutral float-right" title="Visualization Tools" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Simon T. Thomsen, Jeppe H. Surrow.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

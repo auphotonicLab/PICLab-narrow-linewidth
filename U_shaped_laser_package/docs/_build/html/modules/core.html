@@ -1,0 +1,437 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Core Analysis Modules &mdash; U-shaped Laser Package  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Data Processing Modules" href="data.html" />
+    <link rel="prev" title="U-shaped Laser Package Documentation" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            U-shaped Laser Package
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Core Analysis Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.beta_sep.beta_sep_condition"><code class="docutils literal notranslate"><span class="pre">beta_sep_condition()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.beta_sep.beta_sep_line"><code class="docutils literal notranslate"><span class="pre">beta_sep_line()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH.get_csh_paths"><code class="docutils literal notranslate"><span class="pre">get_csh_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH.load_csh_data"><code class="docutils literal notranslate"><span class="pre">load_csh_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH.get_noise_floor_csh"><code class="docutils literal notranslate"><span class="pre">get_noise_floor_csh()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH.get_data"><code class="docutils literal notranslate"><span class="pre">get_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH_unmodified.get_csh_paths"><code class="docutils literal notranslate"><span class="pre">get_csh_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH_unmodified.load_csh_data"><code class="docutils literal notranslate"><span class="pre">load_csh_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH_unmodified.get_noise_floor_csh"><code class="docutils literal notranslate"><span class="pre">get_noise_floor_csh()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.CSH_unmodified.get_data"><code class="docutils literal notranslate"><span class="pre">get_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.HighFinesse_FN.get_hf_paths"><code class="docutils literal notranslate"><span class="pre">get_hf_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.HighFinesse_FN.load_hf_data"><code class="docutils literal notranslate"><span class="pre">load_hf_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.HighFinesse_FN.get_noise_floor_hf"><code class="docutils literal notranslate"><span class="pre">get_noise_floor_hf()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.HighFinesse_FN.get_data"><code class="docutils literal notranslate"><span class="pre">get_data()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="data.html">Data Processing Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="analysis.html">Analysis Tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="visualization.html">Visualization Tools</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">U-shaped Laser Package</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Core Analysis Modules</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/modules/core.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="core-analysis-modules">
+<h1>Core Analysis Modules<a class="headerlink" href="#core-analysis-modules" title="Link to this heading"></a></h1>
+<p id="module-u_shaped_lib.beta_sep">Module for beta separation method in laser linewidth analysis.</p>
+<p>This module implements the beta separation method to estimate effective laser linewidth
+by analyzing frequency noise power spectral density (PSD) data. It uses a heaviside-like
+function to identify regions where the PSD exceeds the beta separation line.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.beta_sep.beta_sep_condition">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.beta_sep.</span></span><span class="sig-name descname"><span class="pre">beta_sep_condition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freqs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/beta_sep.html#beta_sep_condition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.beta_sep.beta_sep_condition" title="Link to this definition"></a></dt>
+<dd><p>Find indices where PSD exceeds beta separation line.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freqs</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of frequencies</p></li>
+<li><p><strong>ps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of power spectral density values</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices where PSD exceeds beta separation line</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.beta_sep.beta_sep_line">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.beta_sep.</span></span><span class="sig-name descname"><span class="pre">beta_sep_line</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freqs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cutoff</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/beta_sep.html#beta_sep_line"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.beta_sep.beta_sep_line" title="Link to this definition"></a></dt>
+<dd><p>Calculate effective linewidth using beta separation method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freqs</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of frequencies</p></li>
+<li><p><strong>ps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of power spectral density values</p></li>
+<li><p><strong>cutoff</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Frequency cutoff value</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Four values containing:
+- new_freqs : filtered frequency array
+- new_ps : filtered PSD array
+- integral : cumulative integral of PSD
+- eff_lw : effective linewidth estimate</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p id="module-u_shaped_lib.CSH">Module for analyzing Coherent Self-Heterodyne (CSH) measurements.</p>
+<p>This module provides functionality to load and process CSH measurement data,
+including noise floor analysis and linewidth calculations for modified data
+that has been divided by the propagation factor.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH.get_csh_paths">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH.</span></span><span class="sig-name descname"><span class="pre">get_csh_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH.html#get_csh_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH.get_csh_paths" title="Link to this definition"></a></dt>
+<dd><p>Get paths to all CSH measurement files in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of paths to CSH measurement files</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH.load_csh_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH.</span></span><span class="sig-name descname"><span class="pre">load_csh_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH.html#load_csh_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH.load_csh_data" title="Link to this definition"></a></dt>
+<dd><p>Load CSH measurement data from a file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the measurement file</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Three values containing:
+- freqs : array of frequencies
+- ps : array of power values
+- lw : minimum power value (linewidth estimate)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH.get_noise_floor_csh">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH.</span></span><span class="sig-name descname"><span class="pre">get_noise_floor_csh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freqs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH.html#get_noise_floor_csh"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH.get_noise_floor_csh" title="Link to this definition"></a></dt>
+<dd><p>Calculate the noise floor from CSH data in a specified range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freqs</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of frequencies</p></li>
+<li><p><strong>ps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of power values</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mean power value in the specified range</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH.get_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH.</span></span><span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">floor_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[9e5,</span> <span class="pre">1e6]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH.html#get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH.get_data" title="Link to this definition"></a></dt>
+<dd><p>Load and process all CSH measurements in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p></li>
+<li><p><strong>floor_range</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)"><em>list</em></a><em>, </em><em>optional</em>) – Range for noise floor calculation [lower_freq, upper_freq], by default [9e5,1e6]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Three lists containing:
+- lw_all : list of calculated linewidths
+- freqs_all : list of frequency arrays
+- ps_all : list of power arrays</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p id="module-u_shaped_lib.CSH_unmodified">Module for analyzing unmodified Coherent Self-Heterodyne (CSH) measurements.</p>
+<p>This module provides functionality to load and process raw CSH measurement data,
+including noise floor analysis and linewidth calculations. The data needs to be
+divided by the propagation factor for proper analysis.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH_unmodified.get_csh_paths">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH_unmodified.</span></span><span class="sig-name descname"><span class="pre">get_csh_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH_unmodified.html#get_csh_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH_unmodified.get_csh_paths" title="Link to this definition"></a></dt>
+<dd><p>Get paths to all CSH measurement files in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of paths to CSH measurement files</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH_unmodified.load_csh_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH_unmodified.</span></span><span class="sig-name descname"><span class="pre">load_csh_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rbw</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH_unmodified.html#load_csh_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH_unmodified.load_csh_data" title="Link to this definition"></a></dt>
+<dd><p>Load and process raw CSH measurement data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the measurement file</p></li>
+<li><p><strong>center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Center frequency for data processing</p></li>
+<li><p><strong>delay</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Time delay value</p></li>
+<li><p><strong>rbw</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Resolution bandwidth</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Two numpy arrays containing:
+- freqs : array of frequencies
+- ps : array of power values divided by propagation factor</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH_unmodified.get_noise_floor_csh">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH_unmodified.</span></span><span class="sig-name descname"><span class="pre">get_noise_floor_csh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freqs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">floor_range</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH_unmodified.html#get_noise_floor_csh"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH_unmodified.get_noise_floor_csh" title="Link to this definition"></a></dt>
+<dd><p>Calculate the noise floor from CSH data in a specified range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freqs</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of frequencies</p></li>
+<li><p><strong>ps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of power values</p></li>
+<li><p><strong>floor_range</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a>) – Tuple of (lower_freq, upper_freq) defining the range for noise floor calculation</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mean power value in the specified range</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.CSH_unmodified.get_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.CSH_unmodified.</span></span><span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rbw</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">floor_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[9e5,</span> <span class="pre">1e6]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/CSH_unmodified.html#get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.CSH_unmodified.get_data" title="Link to this definition"></a></dt>
+<dd><p>Load and process all unmodified CSH measurements in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p></li>
+<li><p><strong>center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Center frequency for data processing</p></li>
+<li><p><strong>delay</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Time delay value</p></li>
+<li><p><strong>rbw</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Resolution bandwidth</p></li>
+<li><p><strong>floor_range</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)"><em>list</em></a><em>, </em><em>optional</em>) – Range for noise floor calculation [lower_freq, upper_freq], by default [9e5,1e6]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Three lists containing:
+- lw_all : list of calculated linewidths
+- freqs_all : list of frequency arrays
+- ps_all : list of power arrays</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p id="module-u_shaped_lib.HighFinesse_FN">Module for analyzing frequency noise measurements from High Finesse equipment.</p>
+<p>This module provides functionality to load and process frequency noise (FN) data
+from High Finesse measurement equipment, including noise floor analysis and
+linewidth calculations.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.HighFinesse_FN.get_hf_paths">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.HighFinesse_FN.</span></span><span class="sig-name descname"><span class="pre">get_hf_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/HighFinesse_FN.html#get_hf_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.HighFinesse_FN.get_hf_paths" title="Link to this definition"></a></dt>
+<dd><p>Get paths to all High Finesse PSD measurement files in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of paths to PSD measurement files</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.HighFinesse_FN.load_hf_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.HighFinesse_FN.</span></span><span class="sig-name descname"><span class="pre">load_hf_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/HighFinesse_FN.html#load_hf_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.HighFinesse_FN.load_hf_data" title="Link to this definition"></a></dt>
+<dd><p>Load frequency noise data from a High Finesse measurement file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the measurement file</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Two numpy arrays containing:
+- freqs : array of frequencies
+- ps : array of power values</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.HighFinesse_FN.get_noise_floor_hf">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.HighFinesse_FN.</span></span><span class="sig-name descname"><span class="pre">get_noise_floor_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freqs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">floor_range</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/HighFinesse_FN.html#get_noise_floor_hf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.HighFinesse_FN.get_noise_floor_hf" title="Link to this definition"></a></dt>
+<dd><p>Calculate the noise floor from frequency noise data in a specified range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freqs</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of frequencies</p></li>
+<li><p><strong>ps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.2)"><em>numpy.ndarray</em></a>) – Array of power values</p></li>
+<li><p><strong>floor_range</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a>) – Tuple of (lower_freq, upper_freq) defining the range for noise floor calculation</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mean power value in the specified range</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="u_shaped_lib.HighFinesse_FN.get_data">
+<span class="sig-prename descclassname"><span class="pre">u_shaped_lib.HighFinesse_FN.</span></span><span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">floor_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[5e6,</span> <span class="pre">6e6]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/HighFinesse_FN.html#get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.HighFinesse_FN.get_data" title="Link to this definition"></a></dt>
+<dd><p>Load and process all High Finesse frequency noise measurements in a directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>directory</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the directory containing measurement files</p></li>
+<li><p><strong>floor_range</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)"><em>list</em></a><em>, </em><em>optional</em>) – Range for noise floor calculation [lower_freq, upper_freq], by default [5e6,6e6]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Three lists containing:
+- lw_all : list of calculated linewidths
+- freqs_all : list of frequency arrays
+- ps_all : list of power arrays</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="U-shaped Laser Package Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="data.html" class="btn btn-neutral float-right" title="Data Processing Modules" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Simon T. Thomsen, Jeppe H. Surrow.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
