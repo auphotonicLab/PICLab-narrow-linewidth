@@ -12,7 +12,7 @@ authors = [
     { name = "Simon T. Thomsen", email = "sthomsen@ece.au.dk" },
 ]
 description = "A package used for dataprocessing and analysis of data obtained from the U-shaped laser"
-readme = "ReadMe.rst"
+readme = "README.rst"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
