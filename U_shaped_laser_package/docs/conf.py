@@ -3,6 +3,7 @@ import sys
 
 # Add the package source directory to the Python path
 sys.path.insert(0, os.path.abspath('../src'))
+sys.path.insert(0, os.path.abspath('..'))
 
 # Configuration file for the Sphinx documentation builder.
 project = 'U-shaped Laser Package'
@@ -15,6 +16,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.mathjax',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -56,4 +58,18 @@ autodoc_mock_imports = [
 autodoc_member_order = 'bysource'
 autodoc_typehints = 'description'
 autodoc_docstring_signature = True
-autodoc_preserve_defaults = True 
+autodoc_preserve_defaults = True
+
+# Napoleon settings
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+napoleon_include_private_with_doc = True
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = True
+napoleon_use_admonition_for_notes = True
+napoleon_use_admonition_for_references = True
+napoleon_use_ivar = True
+napoleon_use_param = True
+napoleon_use_rtype = True
+napoleon_type_aliases = None 

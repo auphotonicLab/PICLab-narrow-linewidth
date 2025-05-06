@@ -13,11 +13,20 @@ build:
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
-  configuration: docs/conf.py
+  configuration: U_shaped_laser_package/docs/conf.py
+  fail_on_warning: false
 
 # Optionally declare the Python requirements required to build your docs
 python:
   install:
-    - requirements: requirements.txt
+    - requirements: U_shaped_laser_package/requirements.txt
     - method: pip
-      path: . 
+      path: U_shaped_laser_package
+
+# Build the docs in the docs/ directory
+formats:
+  - pdf
+  - epub
+
+# Explicitly set the documentation type
+mkdocs: null 
