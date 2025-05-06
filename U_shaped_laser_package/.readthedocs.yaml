@@ -26,7 +26,4 @@ python:
 # Build the docs in the docs/ directory
 formats:
   - pdf
-  - epub
-
-# Explicitly set the documentation type
-mkdocs: null 
+  - epub 
