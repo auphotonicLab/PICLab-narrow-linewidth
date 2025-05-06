@@ -6,7 +6,7 @@ build-backend = "pdm.backend"
 
 [project]
 name = "u_shaped_lib"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
     { name = "Jeppe H. Surrow", email = "surrow@ece.au.dk" },
     { name = "Simon T. Thomsen", email = "sthomsen@ece.au.dk" },
