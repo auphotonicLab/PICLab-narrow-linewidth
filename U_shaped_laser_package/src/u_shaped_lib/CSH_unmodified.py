@@ -1,3 +1,11 @@
+"""
+Module for analyzing unmodified Coherent Self-Heterodyne (CSH) measurements.
+
+This module provides functionality to load and process raw CSH measurement data,
+including noise floor analysis and linewidth calculations. The data needs to be
+divided by the propagation factor for proper analysis.
+"""
+
 import numpy as np
 from file_management_lib import get_paths
 
@@ -18,11 +26,45 @@ from file_management_lib import get_paths
 
 
 def get_csh_paths(directory):
+    """
+    Get paths to all CSH measurement files in a directory.
+
+    Parameters
+    ----------
+    directory : str
+        Path to the directory containing measurement files
+
+    Returns
+    -------
+    list
+        List of paths to CSH measurement files
+    """
     csh_paths = [p for p in get_paths(directory) if 'esa' in p]
     return csh_paths
 
 
 def load_csh_data(path,center,delay,rbw):
+    """
+    Load and process raw CSH measurement data.
+
+    Parameters
+    ----------
+    path : str
+        Path to the measurement file
+    center : float
+        Center frequency for data processing
+    delay : float
+        Time delay value
+    rbw : float
+        Resolution bandwidth
+
+    Returns
+    -------
+    tuple
+        Two numpy arrays containing:
+        - freqs : array of frequencies
+        - ps : array of power values divided by propagation factor
+    """
     data_ESA = np.loadtxt(path, skiprows=1)
     freqs = data_ESA[0,:] - center 
     ps_raw = 10**(data_ESA[1,:]/10)
@@ -40,12 +82,52 @@ def load_csh_data(path,center,delay,rbw):
 
 
 def get_noise_floor_csh(freqs, ps, floor_range):#Floor range chosen to be outside the range of the sidemodes from DC
+    """
+    Calculate the noise floor from CSH data in a specified range.
+
+    Parameters
+    ----------
+    freqs : numpy.ndarray
+        Array of frequencies
+    ps : numpy.ndarray
+        Array of power values
+    floor_range : tuple
+        Tuple of (lower_freq, upper_freq) defining the range for noise floor calculation
+
+    Returns
+    -------
+    float
+        Mean power value in the specified range
+    """
     condition = (freqs > floor_range[0]) & (freqs < floor_range[1]) 
     return np.mean(ps[condition])
 
 
 def get_data(directory,center,delay,rbw,floor_range=[9e5,1e6]):
+    """
+    Load and process all unmodified CSH measurements in a directory.
 
+    Parameters
+    ----------
+    directory : str
+        Path to the directory containing measurement files
+    center : float
+        Center frequency for data processing
+    delay : float
+        Time delay value
+    rbw : float
+        Resolution bandwidth
+    floor_range : list, optional
+        Range for noise floor calculation [lower_freq, upper_freq], by default [9e5,1e6]
+
+    Returns
+    -------
+    tuple
+        Three lists containing:
+        - lw_all : list of calculated linewidths
+        - freqs_all : list of frequency arrays
+        - ps_all : list of power arrays
+    """
     paths = get_csh_paths(directory)
     number = len(paths)
 

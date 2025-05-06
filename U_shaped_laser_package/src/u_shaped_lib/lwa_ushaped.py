@@ -48,9 +48,10 @@ path_rin = r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Simon\20-
 path_rin2 = r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Simon\20-6-ushaped\RIN_490uW_p05uW_FB.txt"
 path_rin3 = r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Simon\20-6-ushaped\RIN_490uW_12uW_FB.txt"
 
-
-
 def plot_fn():
+    """
+    Plot frequency noise measurements from all FN files in the U-shaped measurements directory.
+    """
     paths = get_paths(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Simon\20-6-ushaped")
     for path in paths:
         if 'FN' in path:
@@ -62,6 +63,9 @@ def plot_fn():
             plt.loglog(fs,ps,label=path)
             #plt.legend()
 def plot_rin():
+    """
+    Plot relative intensity noise measurements from all RIN files in the U-shaped measurements directory.
+    """
     paths = get_paths(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Simon\20-6-ushaped")
     for path in paths:
         if 'RIN' in path:
@@ -70,6 +74,10 @@ def plot_rin():
             plt.legend()
 
 def plot_other():
+    """
+    Plot various laser measurements including linewidth, frequency noise, and RIN data
+    with different feedback conditions.
+    """
     lwa = lwa_lib.LWA(path_no)
     lwa2 = lwa_lib.LWA(path_2)
     lwa3 = lwa_lib.LWA(path_3)
@@ -128,6 +136,9 @@ def plot_other():
     plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\rin.pdf",bbox_inches='tight')
 
 def plot_new():
+    """
+    Plot new linewidth measurements comparing no feedback and high feedback conditions.
+    """
     path_no_fb = r"C:\Users\au622616\OneDrive - Aarhus universitet\U shaped measurements\10-7\2024-07-10_15-14-11\PSD_1e-05.txt"
     path_high_fb  = r"C:\Users\au622616\OneDrive - Aarhus universitet\U shaped measurements\10-7\2024-07-10_14-10-06\PSD_2.txt"
     lw = 1.5

@@ -5,15 +5,22 @@ Created on Thu Jul 18 08:38:11 2024
 @author: au622616
 """
 
+"""
+Module for analyzing and plotting SMSR (Side Mode Suppression Ratio) measurements 
+for U-shaped laser configurations.
+
+This module provides functionality to load, process and visualize SMSR data from
+measurements of U-shaped laser systems, including peak detection and spectral analysis.
+"""
+
 import matplotlib.pyplot as plt 
 import numpy as np
 from file_management_lib import get_paths
 from scipy.signal import find_peaks
+from cycler import cycler
 
 directory = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\16-07\2024-07-16_16-51-37_fb_300µW"
 path = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback measurements\16-07\2024-07-17_10-09-20_fb_15.2µW\no 20full.txt"
-from cycler import cycler
-
 fontsize = 17
 plt.style.use('default')
 plt.rcParams['lines.linewidth'] = 2.5
@@ -38,7 +45,24 @@ plt.rcParams['ytick.major.size'] = 7
 
 plt.rcParams["legend.framealpha"] = 1
 
-def get_data(path,plot=False):
+def get_data(path, plot=False):
+    """
+    Load and process spectral data from a measurement file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the data file
+    plot : bool, optional
+        Whether to plot the data, by default False
+
+    Returns
+    -------
+    tuple
+        Two numpy arrays containing:
+        - freqs : array of frequencies in MHz
+        - ps : array of power values in dB
+    """
     df = np.loadtxt(path,skiprows=1,delimiter=',')
     freqs = df[0,:]/1e6 - 76
     ps = df[1,:]
@@ -48,13 +72,36 @@ def get_data(path,plot=False):
     return freqs, ps
 
 def plot_all(directory):
+    """
+    Plot all full spectrum measurements in a directory.
+
+    Parameters
+    ----------
+    directory : str
+        Path to the directory containing measurement files
+    """
     for path in get_paths(directory):
         if 'full' in path:
             plt.figure()
             get_data(path)
             plt.title(path)
 
-def plot_single(path,plot=False):
+def plot_single(path, plot=False):
+    """
+    Plot a single SMSR measurement with peak detection and annotations.
+
+    Parameters
+    ----------
+    path : str
+        Path to the measurement file
+    plot : bool, optional
+        Whether to create the plot, by default False
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of peak frequencies detected in the spectrum
+    """
     freqs, ps = get_data(path)
     peaks, _ = find_peaks(ps,distance = 15000,threshold=-50)
     
@@ -82,7 +129,6 @@ def plot_single(path,plot=False):
         grey_line, = ax.plot([],[],color='grey')
         ax.legend()
         ax.legend([black_line, grey_line], ['1st sideband', 'DC'])
-        #ax.plot(freqs[peaks],ps[peaks],'b.')
         plt.savefig(r"C:\Users\au622616\OneDrive - Aarhus universitet\Documents\Dual feedback figures\SMSR.png")
     return freqs[peaks]
 

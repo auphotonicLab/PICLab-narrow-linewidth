@@ -5,6 +5,13 @@ Created on Fri Jul 19 11:33:20 2024
 @author: au622616
 """
 
+"""
+Module for analyzing and plotting the relationship between SMSR (Side Mode Suppression Ratio) 
+and laser linewidth measurements.
+
+This module provides functionality to load and visualize data comparing SMSR values
+with corresponding laser linewidth measurements.
+"""
 
 import matplotlib.pyplot as plt 
 import numpy as np
@@ -17,6 +24,21 @@ path = r"O:\Tech_Photonics\Projects\Narrow Linewidth\MFB Chips\Chip 3 Feedback m
 path_no = r"C:\Users\au622616\OneDrive - Aarhus universitet\U shaped measurements\18-7\2024-07-18_14-53-44\result.txt"
     
 def get_data(path):
+    """
+    Load SMSR and linewidth data from a CSV file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the CSV file containing the data
+
+    Returns
+    -------
+    tuple
+        Two numpy arrays containing:
+        - lw : array of linewidth values in Hz
+        - smsr : array of SMSR values in dB
+    """
     df = pd.read_csv(path,header=3,
                      encoding="ISO-8859-1")
     lw = df.values[:,0]
