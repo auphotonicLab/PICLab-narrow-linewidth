@@ -154,6 +154,7 @@ def PSD_real_laser_dB(omega, A, del_f, freq_center, a1):
                         * np.real(math.exp(1j*np.pi* (freq_center-omega)*del_f/(2*a1))
                                   *math.erfc( (np.pi*del_f + 1j*(freq_center-omega))/ (2*np.sqrt(a1)) ) ) )
 
+
 def zeta_func(f, del_f, t_d):
     """
     Zeta function for laser linewidth calculations.
