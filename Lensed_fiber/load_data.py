@@ -546,7 +546,10 @@ def get_SMSR_filtered_measurements(directory: str, result_directory: str):
         return result_directory + '\\' + file
     
     if result_directory != "None":
-        result_file_path = path_results(os.listdir(result_directory)[0])
+        
+        for file in os.listdir(result_directory):
+            if 'result' in file:
+                result_file_path = path_results(file)
     else:
         pass
 
