@@ -62,7 +62,7 @@ def load_csh_data(path):
     # lw = np.min(ps)
     return freqs, ps
 
-def get_noise_floor_csh(freqs, ps):
+def get_noise_floor_csh(freqs, ps, floor_range):
     """
     Calculate the noise floor from CSH data in a specified range.
 
@@ -78,7 +78,7 @@ def get_noise_floor_csh(freqs, ps):
     float
         Mean power value in the specified range
     """
-    condition = (freqs > 9e5) & (freqs < 1e6)
+    condition = (freqs > floor_range[0]) & (freqs < floor_range[1])
     return np.mean(ps[condition])
 
 def get_data(directory, floor_range=[9e5,1e6]):
