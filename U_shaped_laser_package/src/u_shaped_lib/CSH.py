@@ -55,13 +55,12 @@ def load_csh_data(path):
         Three values containing:
         - freqs : array of frequencies
         - ps : array of power values
-        - lw : minimum power value (linewidth estimate)
     """
     data = np.loadtxt(path, skiprows=1)
     freqs = data[:, 0]
     ps = data[:, 1]
-    lw = np.min(ps)
-    return freqs, ps, lw
+    # lw = np.min(ps)
+    return freqs, ps
 
 def get_noise_floor_csh(freqs, ps):
     """
