@@ -47,17 +47,20 @@ def timestring():
     return timestring
 
 
-def datetimestring():
+def datetimestring(microsecond=False):
     now = datetime.now()
-    datestring =  now.strftime('%Y-%m-%d_%H-%M-%S')
+    if microsecond:
+        datestring =  now.strftime('%Y-%m-%d_%H-%M-%S-%f')
+    else:
+        datestring =  now.strftime('%Y-%m-%d_%H-%M-%S')
     return datestring
 
-def change_folder(my_path, data_folder_name):
+def change_folder(my_path, data_folder_name, meas_type = ''): #Added an option for a meas_type
     old_directory = os.getcwd()
     print("\nYour current working directory is:\n {0}\n".format(old_directory))
     try:
         my_directory_aux = os.path.join(my_path,
-                                        'Measurements_' + datestring())
+                                        meas_type + 'Measurements_' + datestring())
         my_directory = os.path.join (my_directory_aux, data_folder_name)
         os.makedirs(my_directory, exist_ok = True)
         print("Your data will be saved in: '%s'\n" % my_directory)
@@ -133,7 +136,7 @@ class AimValley_CurrentSource: #developer: Mónica
         
         # load dll
        # dll_ref = System.Reflection.Assembly.LoadFile(dll_file)
-        TosaB = clr.AddReference(dll_file)
+        TosaB = clr.AddReference(r"C:\Users\Group Login\Documents\Simon\TosaControlx64.dll")
         # Check to see if DLL is loaded correctly, should print DLL information
         print (TosaB)
         # import dll functions
@@ -258,8 +261,8 @@ class AimValley_CurrentSource: #developer: Mónica
                 self.instr.LaserPhase.Update()
 
         elif channel == 'LG':
-            if value > 250:
-                raise ValueError('Max current is 250 mA')
+            if value > 200:
+                raise ValueError('Max current is 200 mA')
             else:
                 self.instr.LaserGain.IdacCurrent = value
                 self.instr.LaserGain.Update()
@@ -592,9 +595,9 @@ class OSA_YOKOGAWA:  # developer: Peter Tønning, modified by Mónica Far
         # self.instr.open()
         alive = self.instr.query('*IDN?')
 
-        if alive != 0:
-            print('OSA_YOKOGAWA is alive')
-            print(alive)
+        #if alive != 0:
+            #print('OSA_YOKOGAWA is alive')
+            #print(alive)
 
         self.instr.write("*RST")
         self.instr.write("CFORM1")
@@ -626,7 +629,7 @@ class OSA_YOKOGAWA:  # developer: Peter Tønning, modified by Mónica Far
 
     def ReadSpectrum(self):
         # Set the OSA scanning parameters:
-        # Start OSA measurement:
+        # Start   measurement:
         self.instr.write(":init:smode 1")
         self.instr.write("*CLS")
         self.instr.write(":init")  
@@ -682,16 +685,24 @@ class OSA_YOKOGAWA:  # developer: Peter Tønning, modified by Mónica Far
 class PM100USB: # developer: Lars Nielsen, modified by Mónica Far and later Jeppe Surrow
 
     def __init__(self,
-                 lambda0=1550,PM_index=0):
+                 lambda0=1550,PM_name='P0024530'):
         self.PDinstr = TLPM()
         deviceCount = c_uint32()
         self.PDinstr.findRsrc(byref(deviceCount))
+        
+        print(f'There are {deviceCount.value} device(s) found')
+
         
         resourceName = []
         modelName = []
         serialNumber = []
         manufacturer = []
         deviceAvailable = []
+        
+        decoded_serialNumber = [None]*deviceCount.value
+        
+        self.PDinstr.close()
+
         
         for i in range(0,deviceCount.value):
             resourceName.append(create_string_buffer(1024))
@@ -700,21 +711,29 @@ class PM100USB: # developer: Lars Nielsen, modified by Mónica Far and later Jep
             manufacturer.append(create_string_buffer(1024))
             deviceAvailable.append(create_string_buffer(1024))
             
+
+            
+            self.PDinstr.getRsrcName(c_int(i), resourceName[i])
         
-        print(f'There are {deviceCount.value} device(s) available')
-        self.PDinstr.close()
+            self.PDinstr.getRsrcInfo(c_int(i), modelName[i], serialNumber[i], manufacturer[i], byref(c_int16()))
+            
+            decoded_serialNumber[i] = serialNumber[i].value.decode("utf-8")
+            
+            self.PDinstr.close()
+
         
-        
-        self.PDinstr.getRsrcName(c_int(PM_index), resourceName[PM_index])
-        
-        self.PDinstr.getRsrcInfo(c_int(PM_index), modelName[PM_index], serialNumber[PM_index], manufacturer[PM_index], byref(c_int16()))
+        PM_index = decoded_serialNumber.index(PM_name)
+    
+
         
         print(f'The connected device is {modelName[PM_index].value.decode("utf-8")} {serialNumber[PM_index].value.decode("utf-8")}')
         self.PDinstr.open(resourceName[PM_index], c_bool(True), c_bool(True))
         self.PDinstr.setWavelength(c_double(lambda0))
         message = create_string_buffer(1024)
         self.PDinstr.getCalibrationMsg(message)
-        print(f'Last calibrated {message.value.decode("utf-8")}')
+        print(f'Last calibrated {message.value.decode("utf-8")}\n')
+            
+
 
     
 
@@ -725,11 +744,11 @@ class PM100USB: # developer: Lars Nielsen, modified by Mónica Far and later Jep
         power = c_double()
         pU = c_int16()
         lam0 = c_double()
-        self.PDinstr.setAvgTime(c_double(0.005))
+        self.PDinstr.setAvgTime(c_double(0.001))
         self.PDinstr.measPower(byref(power))
         self.PDinstr.getPowerUnit(byref(pU))
         self.PDinstr.getPhotodiodeResponsivity(c_int16(0), byref(lam0))
-        time.sleep(0.01)
+        #time.sleep(0.01)
         # print('Power unit:',lam0)
         # print('Power unit:',self.PDinstr.getPowerUnit(byref(lam)))
         return power.value
@@ -882,9 +901,16 @@ class AFG_Siglent:
                       ):
     
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
-        self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
-        self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
-        self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(offset))  # Vpp
+        
+        if waveform != 'DC':
+            self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
+            self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
+        
+        if offset >= 0: 
+            self.instr.write('C' + str(channel) + ':BSWV OFST,+' + str(offset))  # Vpp
+        else:
+            self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(abs(offset)))  # Vpp
+                
         self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
 
 
@@ -902,7 +928,7 @@ class DC_Siglent: #Developer: Jeppe Surrow
         def __init__(self,
                      channel=1,
                      current=0,
-                     voltage=1):
+                     voltage=1, TCP = True, IP_address = '192.168.1.31'):
             self.current = current
             self.voltage = voltage
             self.channel = channel
@@ -911,7 +937,10 @@ class DC_Siglent: #Developer: Jeppe Surrow
                 voltage=5
             
             rm = visa.ResourceManager()
-            resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
+            if TCP:
+                resourceName ='TCPIP0::' + IP_address + '::inst0::INSTR'
+            else: 
+                resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
 
             self.instr = rm.open_resource(resourceName)
             self.instr.write_termination='\n' #Modify termination character
@@ -1183,15 +1212,15 @@ class ESA_RS_FSV30:
         else:
             resourceName ='TCPIP0::'+IP_address+'::inst0::INSTR'
             
-        print(rm.list_resources(),resourceName)
+        #print(rm.list_resources(),resourceName)
         self.instr = rm.open_resource(resourceName)
         alive = self.instr.query('*IDN?')
         self.instr.read_termination = '\n'
         self.instr.write_termination = '\n'
         self.instr.timeout = 10000
-        if alive != 0:
-            print('ESA_RS_FSV is alive')
-            print(alive)
+        #if alive != 0:
+            #print('ESA_RS_FSV is alive')
+            #print(alive)
 
         self.spanFreq = spanFreq
         self.centerFreq = centerFreq
@@ -1218,8 +1247,8 @@ class ESA_RS_FSV30:
         self.resolutionBW = resolutionBW
         self.dataPointsInSweep = dataPointsInSweep
         self.sweepCount = sweepCount
-        
-    def ReadSpectrum(self):
+    
+    def SetSpectrum(self):
         self.instr.clear()
         self.instr.write('FREQ:CENT '+str(self.centerFreq)+' MHz')   #Center frequency
         self.instr.write('FREQ:SPAN '+str(self.spanFreq)+' MHz')     #Frequency span
@@ -1228,11 +1257,16 @@ class ESA_RS_FSV30:
         self.instr.write('SWE:POIN '+str(int(self.dataPointsInSweep)))                    #Number of data points in sweep
         self.instr.write('SWE:COUN '+str(int(self.sweepCount)))       #Number of sweeps used in a trace.
         
+        
+    def ReadSpectrum(self):
+        self.SetSpectrum()
+        
 
         self.instr.write('INIT')                                #Start frequency sweep
         self.instr.query('*OPC?')                               #Wait until
 
         dataOut = np.array(self.instr.query_binary_values('FORM REAL,32;:TRAC? TRACE1'))
+        
         freqAxis = (10**6)*np.arange(self.centerFreq-self.spanFreq/2,self.centerFreq+self.spanFreq/2,self.spanFreq/len(dataOut)) #Generate corresponding frequency axis
 
         return np.array([freqAxis,dataOut])  #Return x and y values, corresponding to frequency and power/res respectively
@@ -1286,6 +1320,8 @@ class ESA_RS_FSV30:
 
         return [dataOut.tolist(),freqAxis.tolist()]  #Return x and y values, corresponding to frequency and power/res respectively
 
+    def ContDisplay(self):
+        self.instr.write('INIT:CONT ON')
 
     def CloseConnection(self):
         self.instr.close()
@@ -1541,14 +1577,14 @@ class socketInstrument: #developer: Lars Nielsen
     def query_ascii_values(self,command):
         self.write(command)
 
-        return np.array(self.read().split(',')).astype(np.float).tolist()
+        return np.array(self.read().split(',')).astype(float).tolist()
 
     def close(self):
         self.s.close()
 
 # %%
 
-class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
+class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas. Modified by Maria Paula Montes
     """
     - DESCRIPTION:
         This class is for controlling the Yenista OSA20
@@ -1599,9 +1635,9 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
             self.instr = socketInstrument(ip_address=ip_address,tcp_port=tcp_port)
                    
         alive = self.instr.query('*IDN?')
-        if alive != 0:
-            print('OSA_YENISTA_OSA20 is alive')
-            print(alive)
+        #if alive != 0:
+            #print('OSA_YENISTA_OSA20 is alive')
+            #print(alive)
 
         #Initalization:
         self.instr.write(':OSA 1')              #OSA mode
@@ -1628,6 +1664,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
     
     def ReadSpectrumSimple(self):
         #Leaves OSA scanning parameters untouched
+        #Works better for testing when there is no laser input 
         #Start OSA measurement:
 
         
@@ -1643,7 +1680,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
             waveAxis.append(startTRACE+i*sampTRACE)
         dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
 
-        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+        return np.array([waveAxis, dataOut]) #Return x-axis in nm and y-axis in W!
 
     def ReadSpectrum(self):
         #Set the OSA scanning parameters:
@@ -1674,7 +1711,7 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
             waveAxis.append(startTRACE+i*sampTRACE)
         dataOut = self.instr.query_ascii_values(':TRAC1:DATA? 0,0')
 
-        return [dataOut,waveAxis] #Return x-axis in nm and y-axis in dBm
+        return [waveAxis, dataOut] #Return x-axis in nm and y-axis in dBm
 
     #### Andreas
 
@@ -1766,3 +1803,51 @@ class OSA_YENISTA_OSA20: #developer: Lars Nielsen, Andreas
     
     def CloseConnection(self):
         self.instr.close()
+
+# %%
+# OSW22 - 2x2 fiber optical MEMS switch   
+class OSW22: #developer: Hanna Becker status 16-11-2020
+ 
+    def __init__(self,COMport=5):
+        rm= visa.ResourceManager()
+        resourceName = 'COM'+str(int(COMport))
+        #print(resourceName)
+        self.instr = rm.open_resource(resourceName,baud_rate=115200)
+        self.instr.read_termination = '\r'
+        self.instr.write_termination = '\n'
+        self.instr.timeout = 10000
+        alive = self.instr.query("I?")
+        if alive != 0:
+            #print('OSW22 is alive')
+            print(alive)
+             
+    def Switch1(self): # switch to "1" switch configuration
+        self.instr.write("S 1")
+        print('OSW22 switched to'+str(self.instr.query("S?")))
+         
+    def Switch2(self): # switch to "2" switch configuration
+        self.instr.write("S 2");
+        print('OSW22 switched to'+str(self.instr.query("S?")))
+         
+    def Switch212(self):
+        #initial state must be "2"
+        self.instr.write("S 1\n S 1\n S 2");
+        print('OSW22 switch opened')
+        # ultrashort opening of "S 1\n S 2" does often not lead to full opening of switch
+        # "S 1\n S 1\n S 2" in single command line, leads to more or less stable opening window of 0.7-0.8ms
+ 
+    def Switch121(self):
+        #initial state must be "1"
+        self.instr.write("S 2\n S 2\n S 1");
+        print('OSW22 switch opened') 
+ 
+    def Switch212b(self):
+        #initial state must be "2"
+        self.instr.write("S 1");
+        time.sleep(0.1) # switch opening time now heavily dependent on communication speed and not intrinsic switch speed (variations between 1.0-1.3 ms observed)
+        self.instr.write("S 2");
+        print('OSW22 switch opened')
+ 
+    def CloseConnection(self):
+        self.instr.close()
+        print('OSW22 connection closed')
