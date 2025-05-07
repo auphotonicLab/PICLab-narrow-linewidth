@@ -758,7 +758,7 @@ def sample_ESA_peak(tracenumber=1,time_seconds = 3600):
     time_stamps =[]
     ps = []
     while (time.time() - start_time) < time_seconds:
-        time_stamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        time_stamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S:%f")
         peaks.append(get_ESA_peak())
         ps.append(pm100.GetPower()*1e6)
         time_stamps.append(time_stamp)
@@ -766,7 +766,7 @@ def sample_ESA_peak(tracenumber=1,time_seconds = 3600):
         time.sleep(0.5)
     folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data\Beatnote/"
     data = np.array([time_stamps, peaks,ps])
-    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', np.transpose(data), header = 'Time[s] Frequency[Hz] Power[uW]',fmt='%s')
+    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', np.transpose(data), header = 'Time[d/m/Y H:M:S:f] Frequency[Hz] Power[uW]',fmt='%s')
     pm100.closeConnection()
     return data
 
