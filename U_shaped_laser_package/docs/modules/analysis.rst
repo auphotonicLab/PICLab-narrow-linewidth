@@ -27,10 +27,12 @@ Key Methods
 Complete API Reference
 ~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: u_shaped_lib.OSA
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. currentmodule:: u_shaped_lib.OSA
+
+.. autofunction:: load_osa_data
+.. autofunction:: process_osa_directory
+.. autofunction:: plot_osa_spectrum
+.. autofunction:: process_and_plot_osa_data
 
 Noise Analysis
 -------------
@@ -79,10 +81,17 @@ Visualization
 Complete API Reference
 ~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: u_shaped_lib.RIN
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. currentmodule:: u_shaped_lib.RIN
+
+.. autofunction:: calibrate_conversion
+.. autofunction:: convert_optical_to_electrical
+.. autofunction:: process_intensity_data
+.. autofunction:: calculate_single_RIN
+.. autofunction:: get_RIN_data
+.. autofunction:: ratio_to_db
+.. autofunction:: linear_to_dB
+.. autofunction:: dB_to_linear
+.. autofunction:: plot_RIN_data
 
 Frequency Stability Analysis
 --------------------------
@@ -118,10 +127,13 @@ Visualization
 Complete API Reference
 ~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: u_shaped_lib.beatnote_drift
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. currentmodule:: u_shaped_lib.beatnote_drift
+
+.. autofunction:: load_beatnote_data
+.. autofunction:: process_beatnote_data
+.. autofunction:: analyze_beatnote_drift
+.. autofunction:: plot_beatnote_data
+.. autofunction:: analyze_and_plot_beatnote
 
 Linewidth Analysis
 ----------------

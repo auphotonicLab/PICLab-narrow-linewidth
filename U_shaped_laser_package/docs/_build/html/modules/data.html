@@ -47,6 +47,7 @@
 <li class="toctree-l1"><a class="reference internal" href="core.html">Core Analysis Modules</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Data Processing Modules</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.DshSpectrum"><code class="docutils literal notranslate"><span class="pre">DshSpectrum</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.DshSpectrum.__init__"><code class="docutils literal notranslate"><span class="pre">DshSpectrum.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.DshSpectrum.set_center"><code class="docutils literal notranslate"><span class="pre">DshSpectrum.set_center()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.DshSpectrum.get_data"><code class="docutils literal notranslate"><span class="pre">DshSpectrum.get_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.DshSpectrum.plot"><code class="docutils literal notranslate"><span class="pre">DshSpectrum.plot()</span></code></a></li>
@@ -64,11 +65,13 @@
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.extract_params"><code class="docutils literal notranslate"><span class="pre">extract_params()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.feedback_ratio"><code class="docutils literal notranslate"><span class="pre">feedback_ratio()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.OsaSpectrum"><code class="docutils literal notranslate"><span class="pre">OsaSpectrum</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.OsaSpectrum.__init__"><code class="docutils literal notranslate"><span class="pre">OsaSpectrum.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.OsaSpectrum.get_data"><code class="docutils literal notranslate"><span class="pre">OsaSpectrum.get_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.OsaSpectrum.plot"><code class="docutils literal notranslate"><span class="pre">OsaSpectrum.plot()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.RINSpectrum"><code class="docutils literal notranslate"><span class="pre">RINSpectrum</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.RINSpectrum.__init__"><code class="docutils literal notranslate"><span class="pre">RINSpectrum.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.RINSpectrum.get_data"><code class="docutils literal notranslate"><span class="pre">RINSpectrum.get_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.RINSpectrum.load_csv_with_header"><code class="docutils literal notranslate"><span class="pre">RINSpectrum.load_csv_with_header()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.RINSpectrum.extract_params"><code class="docutils literal notranslate"><span class="pre">RINSpectrum.extract_params()</span></code></a></li>
@@ -76,6 +79,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#u_shaped_lib.load_data.time_osc_spectrum"><code class="docutils literal notranslate"><span class="pre">time_osc_spectrum</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.time_osc_spectrum.__init__"><code class="docutils literal notranslate"><span class="pre">time_osc_spectrum.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.time_osc_spectrum.get_data"><code class="docutils literal notranslate"><span class="pre">time_osc_spectrum.get_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.time_osc_spectrum.load_csv_with_header"><code class="docutils literal notranslate"><span class="pre">time_osc_spectrum.load_csv_with_header()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#u_shaped_lib.load_data.time_osc_spectrum.plot"><code class="docutils literal notranslate"><span class="pre">time_osc_spectrum.plot()</span></code></a></li>
@@ -123,6 +127,30 @@
 <p>Class representing a DSH spectrum</p>
 <dl class="field-list simple">
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.load_data.DshSpectrum.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_bg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#DshSpectrum.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.DshSpectrum.__init__" title="Link to this definition"></a></dt>
+<dd><p>Makes instance of a DSH spectrum.
+It is possible to pass two spectra where the
+second spectrum is treated as a background spectrum
+which is subtracted from the first.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to DSH spectrum</p></li>
+<li><p><strong>path_bg</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>, </em><em>optional</em>) – Path to background spectrum, by default None</p></li>
+<li><p><strong>center</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>, </em><em>optional</em>) – Shift of the frequency axis in MHz.
+Set this to the value of the EOM modulation frequency
+(typically 80 MHz) to center the spectrum about 0.
+Set to 0 by default</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="u_shaped_lib.load_data.DshSpectrum.set_center">
 <span class="sig-name descname"><span class="pre">set_center</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_center</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#DshSpectrum.set_center"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.DshSpectrum.set_center" title="Link to this definition"></a></dt>
@@ -375,6 +403,20 @@ as it is the amount of splitting done before the power meters.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.load_data.OsaSpectrum.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#OsaSpectrum.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.OsaSpectrum.__init__" title="Link to this definition"></a></dt>
+<dd><p>Makes instance of an OSA spectrum.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the OSA spectrum</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="u_shaped_lib.load_data.OsaSpectrum.get_data">
 <span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#OsaSpectrum.get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.OsaSpectrum.get_data" title="Link to this definition"></a></dt>
 <dd><p>Returns OSA data from file path</p>
@@ -407,6 +449,20 @@ as it is the amount of splitting done before the power meters.</p>
 <p>Class representing an OSA spectrum</p>
 <dl class="field-list simple">
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.load_data.RINSpectrum.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#RINSpectrum.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.RINSpectrum.__init__" title="Link to this definition"></a></dt>
+<dd><p>Makes instance of a RIN spectrum.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the RIN spectrum</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="u_shaped_lib.load_data.RINSpectrum.get_data">
 <span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#RINSpectrum.get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.RINSpectrum.get_data" title="Link to this definition"></a></dt>
@@ -455,6 +511,20 @@ as it is the amount of splitting done before the power meters.</p>
 <p>Class representing an OSA spectrum</p>
 <dl class="field-list simple">
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="u_shaped_lib.load_data.time_osc_spectrum.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#time_osc_spectrum.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.time_osc_spectrum.__init__" title="Link to this definition"></a></dt>
+<dd><p>Makes instance of a RIN spectrum.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Path to the RIN spectrum</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="u_shaped_lib.load_data.time_osc_spectrum.get_data">
 <span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/u_shaped_lib/load_data.html#time_osc_spectrum.get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#u_shaped_lib.load_data.time_osc_spectrum.get_data" title="Link to this definition"></a></dt>
