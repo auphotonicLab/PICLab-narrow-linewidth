@@ -134,18 +134,17 @@
 <span class="sd">        Three values containing:</span>
 <span class="sd">        - freqs : array of frequencies</span>
 <span class="sd">        - ps : array of power values</span>
-<span class="sd">        - lw : minimum power value (linewidth estimate)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">skiprows</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
     <span class="n">freqs</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
     <span class="n">ps</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
-    <span class="n">lw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ps</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">freqs</span><span class="p">,</span> <span class="n">ps</span><span class="p">,</span> <span class="n">lw</span></div>
+    <span class="c1"># lw = np.min(ps)</span>
+    <span class="k">return</span> <span class="n">freqs</span><span class="p">,</span> <span class="n">ps</span></div>
 
 
 <div class="viewcode-block" id="get_noise_floor_csh">
 <a class="viewcode-back" href="../../modules/core.html#u_shaped_lib.CSH.get_noise_floor_csh">[docs]</a>
-<span class="k">def</span> <span class="nf">get_noise_floor_csh</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="n">ps</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">get_noise_floor_csh</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="n">ps</span><span class="p">,</span> <span class="n">floor_range</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate the noise floor from CSH data in a specified range.</span>
 
@@ -161,7 +160,7 @@
 <span class="sd">    float</span>
 <span class="sd">        Mean power value in the specified range</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">condition</span> <span class="o">=</span> <span class="p">(</span><span class="n">freqs</span> <span class="o">&gt;</span> <span class="mf">9e5</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">freqs</span> <span class="o">&lt;</span> <span class="mf">1e6</span><span class="p">)</span>
+    <span class="n">condition</span> <span class="o">=</span> <span class="p">(</span><span class="n">freqs</span> <span class="o">&gt;</span> <span class="n">floor_range</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">freqs</span> <span class="o">&lt;</span> <span class="n">floor_range</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">ps</span><span class="p">[</span><span class="n">condition</span><span class="p">])</span></div>
 
 
