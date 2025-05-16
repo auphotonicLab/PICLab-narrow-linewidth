@@ -7,7 +7,7 @@ linewidth calculations.
 """
 
 import numpy as np
-import .lwa_lib
+from . import lwa_lib
 from .file_management_lib import get_paths
 
 def get_hf_paths(directory):

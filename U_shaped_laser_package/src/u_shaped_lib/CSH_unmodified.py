@@ -134,6 +134,8 @@ def get_data(directory,center,delay,rbw,floor_range=[9e5,1e6]):
     freqs_all = [[]]*number
     ps_all =  [[]]*number
     lw_all =  [0]*number
+    
+    print('Linewidths found from average between',floor_range[0]*1e-3,'kHz and',floor_range[1]*1e-3,'kHz')
 
 
     for i,path in enumerate(paths):
