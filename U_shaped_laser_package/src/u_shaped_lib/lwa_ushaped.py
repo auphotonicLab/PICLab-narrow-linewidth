@@ -5,7 +5,7 @@ Created on Wed Mar  6 11:13:00 2024
 @author: au622616
 """
 
-import .lwa_lib
+from . import lwa_lib
 import os
 import matplotlib.pyplot as plt
 from .file_management_lib import get_paths
