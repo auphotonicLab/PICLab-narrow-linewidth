@@ -7,7 +7,7 @@ divided by the propagation factor for proper analysis.
 """
 
 import numpy as np
-from file_management_lib import get_paths
+from .file_management_lib import get_paths
 
 #For unmodified data. Needs to be divided by prop factor
 

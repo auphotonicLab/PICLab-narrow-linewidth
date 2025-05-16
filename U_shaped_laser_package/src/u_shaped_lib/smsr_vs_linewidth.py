@@ -15,7 +15,7 @@ with corresponding laser linewidth measurements.
 
 import matplotlib.pyplot as plt 
 import numpy as np
-from file_management_lib import get_paths
+from .file_management_lib import get_paths
 from scipy.signal import find_peaks
 import pandas as pd
 from matplotlib.patches import Rectangle

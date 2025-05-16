@@ -7,7 +7,7 @@ Created on Tue Jul 30 11:28:52 2024
 
 import matplotlib.pyplot as plt 
 import numpy as np
-from file_management_lib import get_paths, get_header
+from .file_management_lib import get_paths, get_header
 from scipy.signal import find_peaks
 import pandas as pd
 import re

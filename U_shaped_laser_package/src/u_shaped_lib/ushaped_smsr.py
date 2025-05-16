@@ -15,7 +15,7 @@ measurements of U-shaped laser systems, including peak detection and spectral an
 
 import matplotlib.pyplot as plt 
 import numpy as np
-from file_management_lib import get_paths
+from .file_management_lib import get_paths
 from scipy.signal import find_peaks
 from cycler import cycler
 

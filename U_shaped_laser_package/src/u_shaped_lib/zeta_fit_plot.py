@@ -5,8 +5,8 @@ Created on Mon Jul 15 14:01:41 2024
 @author: au622616
 """
 
-from zeta_fit import get_linewidth
-from file_management_lib import get_paths
+from .zeta_fit import get_linewidth
+from .file_management_lib import get_paths
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np

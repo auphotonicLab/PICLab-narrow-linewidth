@@ -11,8 +11,8 @@ import numpy as np
 import os
 from collections import defaultdict
 from scipy.stats import iqr
-from file_management_lib import get_paths, get_header
-from lwa_lib import LWA
+from .file_management_lib import get_paths, get_header
+from .lwa_lib import LWA
 
 fontsize=20
 plt.rcParams['axes.labelsize'] = fontsize
