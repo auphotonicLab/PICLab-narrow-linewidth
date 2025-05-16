@@ -7,7 +7,7 @@ that has been divided by the propagation factor.
 """
 
 import numpy as np
-from file_management_lib import get_paths
+from .file_management_lib import get_paths
 
 #For modified data. Having been divided by prop factor in main script
 """"
