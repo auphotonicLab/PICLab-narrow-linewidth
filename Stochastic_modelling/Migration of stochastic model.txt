@@ -1,0 +1,73 @@
+Migration of stochastic model for squeezing:
+MATLAB --> Python:
+
+A sensible migration path is:
+
+1. Identify the simulation flow and dependencies across those MATLAB files.
+
+2. Recreate the core numerical routines in Python, using a notebook as the main driver.
+
+3. Match the MATLAB data structures, parameter names, and random-process behavior as closely as possible.
+
+4. Reproduce the main plots and summary quantities in the notebook.
+
+5. Validate the Python output against MATLAB for a small set of representative runs before scaling up.
+
+
+
+The most useful checks are:
+
+1. Overlay the photon-density time trace from Python with the MATLAB trace from QD.m. This checks the overall dynamics and steady-state level.
+2. Compare summary statistics from the same run window: mean photon number, variance, `g20`, Fano factor, and Q-factor.
+3. Compare the output-photon series the same way, not just the intracavity photons. That is often a better test of the SSA logic.
+4. Compare distributions or histograms of the photon number, not only a single trajectory.
+5. If you have MATLAB rate-equation output like `RE.mat`, compare the stochastic mean against that deterministic curve across current values.
+6. Repeat the same test for several pump currents or initial conditions, because one successful case is not enough to establish equivalence.
+
+So the migration validation should be layered:
+- one plot for shape,
+- one table of metrics for quantitative agreement,
+- and one or two cross-checks over multiple currents for robustness.
+
+
+
+
+Main changes:
+No MATLAB library is being used for the simulation itself. The migration is a native Python reimplementation of the MATLAB logic, with only the validation step reading a MATLAB `.mat` file through SciPy.
+
+The “like for like” part was done by replacing MATLAB functionality with direct Python equivalents, not by wrapping MATLAB:
+- `poissrnd` became `numpy.random.poisson` in direct_method.py.
+- `feval(output_fcn, ...)` became a normal Python callable.
+- `size`, `find`, `zeros`, logical indexing, and row updates became NumPy shape handling, boolean masks, and array operations.
+- `rmmissing`, `mean`, `var`, and the `g20` calculations became NumPy filtering and statistics in analysis.py.
+- The parameter block and propensity function from QD.m were recreated in qd_model.py.
+- Plotting was moved from MATLAB graphics to Matplotlib in the notebook.
+
+So the core answer is: the MATLAB files were not executed through a MATLAB compatibility layer; they were translated function by function into Python, preserving the same model and update rules. The only MATLAB-specific thing left is the optional `.mat` comparison file used in the validation plot.
+
+One nuance: this is a mathematical port, not a literal syntax port. The main SSA loop is implemented in Python in the same algorithmic structure, but with NumPy arrays and Python callables instead of MATLAB vectors and function handles. The commented-out plotting/statistics sections in QD.m are not all translated yet because they were not needed for the runnable migration core.
+
+
+
+
+Adding outcommented code:
+I’m going to turn the commented MATLAB analysis blocks into a small, readable notebook section: one cell for photon time-course/statistics, one for output-photon increments and histogram, and one optional spectral diagnostic.
+
+I’m adding the output-photon increment analysis next, which is the closest match to the MATLAB `diff(A)` statistics and histogram block.
+
+I’m placing the code cell for the output-photon increments now, including the histogram and the same mean/variance/Fano-style metrics the MATLAB block was computing.
+
+I’m adding one optional frequency-domain diagnostic as the last cell, since that corresponds to the MATLAB RIN spectrum block but stays clearly separated from the time-domain plots.
+
+I’m finishing that section with the spectral code cell now. After that I’ll validate the new cells in order so the notebook stays runnable.
+
+The extra diagnostics are in place. I’m doing a validation pass now by checking the notebook summary and then running the new cells in order to catch any indexing or variable-scope issues.
+
+I organized the MATLAB-style diagnostics into a separate section in Stochastisc_laser_model_squeezing.ipynb after the validation block.
+
+The structure is now:
+- Cell 7: photon time trace plus carrier populations, with the key mean/variance summary.
+- Cell 9: output-photon increments, both as a time series and as a histogram, matching the old `diff(A)` analysis.
+- Cell 11: optional output-noise spectrum, kept separate because it is more sensitive to sampling and scaling.
+
+All three cells ran successfully. The plots are informative, but the time-domain diagnostics are still dominated by the initial transient, so the next sensible refinement would be to add a steady-state window selector, for example using only the late-time portion of the run when you want MATLAB-vs-Python comparisons.
