@@ -1,4 +1,5 @@
 
+Siglent scope lab · PY
 """
 siglent_scope_lab.py
  
@@ -25,7 +26,13 @@ Example experiment run:
     t, v1 = get_waveform(inst, 1)
     t, v2 = get_waveform(inst, 2)
  
-    save_waveform(inst, "my_measurement.csv", t, {1: v1, 2: v2})
+    save_waveform(inst, "my_measurement.npz", t, {1: v1, 2: v2})
+ 
+To load a saved measurement back later (e.g. in an analysis script):
+ 
+    import numpy as np
+    data = np.load("my_measurement.npz")
+    t, v1 = data["time_s"], data["CH1_volts"]
 """
  
 import struct
@@ -104,6 +111,11 @@ def get_waveform(inst, channel):
     A single :WAVeform:DATA? query can only return up to :WAVeform:MAXPoint
     points at a time, so for large memory depths (e.g. 10M points) this
     reads the waveform in chunks and stitches them back together."""
+    # Read this before any of the big binary transfers below -- querying it
+    # right after a large :WAVeform:DATA? response can return an empty
+    # string on some USB/VISA setups, so it's safest done first.
+    seconds_per_div = float(inst.query(":TIMebase:SCALe?"))
+ 
     inst.write(f":WAVeform:SOURce C{channel}")
     inst.write(":WAVeform:WIDTh WORD")
  
@@ -133,38 +145,35 @@ def get_waveform(inst, channel):
     trigger_delay = struct.unpack_from("<d", preamble, 180)[0]
  
     volts = codes * (vertical_gain / code_per_div) - vertical_offset
- 
-    seconds_per_div = float(inst.query(":TIMebase:SCALe?"))
     t = trigger_delay - 5 * seconds_per_div + np.arange(len(volts)) * sample_interval
     return t, volts
  
  
 def save_waveform(inst, filename, t, channels):
-    """Save time + one or more channels' voltage to a CSV file.
+    """Save time + one or more channels' voltage, plus the instrument's
+    current settings, to a single compressed .npz file (much smaller and
+    faster than a CSV at millions of points).
  
     `channels` is a dict of {channel_number: voltage_array}, e.g. {1: v1, 2: v2}.
-    The instrument's current settings are written as '#' comment lines at
-    the top of the file, above the data."""
-    header_lines = [
-        f"# instrument: {inst.query('*IDN?')}",
-        f"# saved: {datetime.now().isoformat()}",
-        f"# timebase: {inst.query(':TIMebase:SCALe?')} s/div, delay {inst.query(':TIMebase:DELay?')} s",
-        f"# trigger: {inst.query(':TRIGger:EDGE:SOURce?')} edge, level {inst.query(':TRIGger:EDGE:LEVel?')} V, slope {inst.query(':TRIGger:EDGE:SLOPe?')}",
-    ]
-    for ch in channels:
-        header_lines.append(
-            f"# CH{ch}: {inst.query(f':CHANnel{ch}:SCALe?')} V/div, "
-            f"offset {inst.query(f':CHANnel{ch}:OFFSet?')} V, "
-            f"{inst.query(f':CHANnel{ch}:COUPling?')} coupling"
-        )
  
-    data = np.column_stack([t] + [channels[ch] for ch in channels])
-    column_header = "time_s," + ",".join(f"CH{ch}_volts" for ch in channels)
+    Load it back with:
+        data = np.load("my_measurement.npz")
+        t, v1 = data["time_s"], data["CH1_volts"]
+        print(str(data["instrument_idn"]), float(data["timebase_s_div"]))
+    """
+    arrays = {"time_s": t, "instrument_idn": inst.query("*IDN?"), "saved": datetime.now().isoformat(),
+              "timebase_s_div": float(inst.query(":TIMebase:SCALe?")),
+              "timebase_delay_s": float(inst.query(":TIMebase:DELay?")),
+              "trigger_source": inst.query(":TRIGger:EDGE:SOURce?"),
+              "trigger_level_v": float(inst.query(":TRIGger:EDGE:LEVel?")),
+              "trigger_slope": inst.query(":TRIGger:EDGE:SLOPe?")}
+    for ch, v in channels.items():
+        arrays[f"CH{ch}_volts"] = v
+        arrays[f"CH{ch}_scale_v_div"] = float(inst.query(f":CHANnel{ch}:SCALe?"))
+        arrays[f"CH{ch}_offset_v"] = float(inst.query(f":CHANnel{ch}:OFFSet?"))
+        arrays[f"CH{ch}_coupling"] = inst.query(f":CHANnel{ch}:COUPling?")
  
-    with open(filename, "w") as f:
-        f.write("\n".join(header_lines) + "\n")
-        np.savetxt(f, data, delimiter=",", header=column_header, comments="")
- 
-    print("Saved", filename)
+    np.savez_compressed(filename, **arrays)
+    print("Saved", filename, "-- load it back with np.load()")
  
 
