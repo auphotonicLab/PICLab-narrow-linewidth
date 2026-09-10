@@ -3,8 +3,9 @@ Siglent scope lab · PY
 """
 siglent_scope_lab.py
  
-Minimal USB control of a Siglent SDS800X HD oscilloscope for the teaching
-lab. Every function just sends SCPI commands to the instrument -- see the
+USB control of a Siglent SDS800X HD oscilloscope for the teaching
+lab. 
+Every function just sends SCPI commands to the instrument. See the
 SDS Series Programming Guide for the full command reference.
  
 Install once:
