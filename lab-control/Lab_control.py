@@ -359,7 +359,7 @@ class HP_86120B_wavemeter:  # developer: Mónica Far
     Manual can be found either at:
     https://www.keysight.com/dk/en/assets/9018-05330/user-manuals/9018-05330.pdf?success=true
     or at:
-    O:\ST_Photonics\Literature\Manuals_hardware\Keysight 86120B Multi-Wavelength Meter.pdf
+    # O:\ST_Photonics\Literature\Manuals_hardware\Keysight 86120B Multi-Wavelength Meter.pdf
     '''
 
     def __init__(self,
