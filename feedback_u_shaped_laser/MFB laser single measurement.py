@@ -9,6 +9,7 @@ import multiprocessing
 import Moni_Lab_control as pic
 
 
+
 from datetime import datetime 
 import winsound as ws
 
@@ -20,6 +21,7 @@ from scipy.optimize import curve_fit
 #%%
 
 import pyvisa as visa
+
 
 rm = visa.ResourceManager()
 
@@ -116,20 +118,20 @@ def connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = False, 
 
 
     if Laser_Powermeter_bool:
-        pm100 = pic.PM100USB(PM_name='P0024530')
+        pm100 = pic.PM100USB(PM_name='P0024530')#(PM_name='M01246266')
         res.append(pm100)
     else:
         res.append(0)
 
 
     if Feedback_Powermeter_bool:
-        pm101_fb = pic.PM100USB(PM_name='M00905457') #'1904270'
+        pm101_fb = pic.PM100USB(PM_name='M01246265')#'M00905457') #'1904270'
         res.append(pm101_fb)
     else:
         res.append(0)
         
     if MZI_Powermeter_bool:
-        pm101_MZI = pic.PM100USB(PM_name='M00608302')
+        pm101_MZI = pic.PM100USB(PM_name='M01246266')#'M00608302')
         res.append(pm101_MZI)
     else:
         res.append(0)
@@ -191,13 +193,13 @@ def close_connections(TOSA, OSA, ESA, EOM, Laser_Powermeter, Feedback_Powermeter
 
 def inj_lock_amp_mod_ESA_monitoring():
 
-    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\linewidth_enhancement\30-04\Lower_side_wavelength"
+    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\LEF\New gen\Data lower wavelength 2.5V"#"C:\Users\Group Login\Documents\Jeppe_Surrow\LEF\New gen\Data higher wavelength"
     
     
     [TOSA,OSA,ESA,AM,PM_follower,PM_leader,PM_MZI,DC] = connect_to_instruments(TOSA_bool = False, OSA_bool =True, ESA_bool = True, EOM_bool = True, Laser_Powermeter_bool = True, Feedback_Powermeter_bool = True, MZI_Powermeter_bool=False, DC_supply_bool = False)
     
-    DC_voltage_max_power = -2.1
-    DC_voltage_min_power = 3.1
+    DC_voltage_max_power = 2.5
+    DC_voltage_min_power = 3.85
     AM.output_status(channel=2,status='OFF')
 
     AM.setParameters(channel=2, waveform='DC',offset=0,load='HZ')
@@ -230,13 +232,14 @@ def inj_lock_amp_mod_ESA_monitoring():
         ######################## Starting injection and measuring powers, OSA, and ESA (beatnote)
         AM.setParameters(channel=2, waveform='DC',offset=DC_voltage_max_power,load='HZ')
         
-        #time.sleep(0.05) #No time sleep needed, as switching happens on timescale of 100ns
+        time.sleep(0.1) #No time sleep needed, as switching happens on timescale of 100ns
         
         
         
         
         injection_follower_PM = PM_follower.GetPower()
-           
+        
+
         injection_leader_PM = PM_leader.GetPower()
         
         
@@ -270,9 +273,10 @@ def inj_lock_amp_mod_ESA_monitoring():
         OSA.StartMeasurement() #Take a measurement
         OSA_cold_cavity = OSA.ReadSpectrumSimple()
         
-        
+        time.sleep(0.1)
         cold_cavity_follower_PM = PM_follower.GetPower()
-           
+        
+                  
         cold_cavity_leader_PM = PM_leader.GetPower()
 
 
@@ -346,7 +350,7 @@ def intensity_mod_min_max_finder():
     
     print('Voltage max, power',[voltage_max,max_power],'\nVoltage min, power',[voltage_min,min_power])
     
-    
+    PM_leader.closeConnection()
     
     return voltages,power_laser
 
@@ -357,7 +361,7 @@ def intensity_mod_charac():
     [TOSA,OSA,ESA,AM,PM_follower,PM_leader,PM_MZI,DC] = connect_to_instruments(TOSA_bool = False, OSA_bool =False, ESA_bool = False, EOM_bool = True, Laser_Powermeter_bool = False, Feedback_Powermeter_bool = True, MZI_Powermeter_bool=True, DC_supply_bool = False)
     
     
-    voltages = np.array([0.0,4.0]*30)
+    voltages = np.array([-1.5,3.7]*30)
     
     meas_no = len(voltages)
     
@@ -399,7 +403,7 @@ def intensity_mod_charac():
         
         time.sleep(0.1)
         
-    folder = r"C:\Users\Group Login\Documents\Simon\linewidth_enhancement\Modulator_characterization\Max_min"
+    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\LEF\New gen\max_min"#"C:\Users\Group Login\Documents\Simon\linewidth_enhancement\Modulator_characterization\Max_min"
     np.savetxt(folder + '/' + 'power_mod_fast.txt', power_mod_fast)
     np.savetxt(folder + '/' + 'power_mod_slow.txt', power_mod_slow)
     np.savetxt(folder + '/' + 'power_laser_fast.txt', power_laser_fast)
@@ -514,22 +518,23 @@ def plot_OSA(savename=str, save=True,fb_power=0,plot=True):
     wav = data_full_OSA[0]
     #ps = 10*np.log10(data_full_OSA[1])
     ps = data_full_OSA[1]
+    print(ps)
     
     if plot:
         plt.figure()
-        plt.plot(wav,ps)
+        plt.plot(wav,10*np.log10(np.array(ps)))
         plt.ylabel('OSA Power [dBm]')
         plt.xlabel('Wavelength [nm]')
         plt.title('OSA spectrum')
-        plt.yscale('log')
+        #plt.yscale('log')
         #plt.ylim([-90,-20]) # -80, 10
     txt_header = '\n'.join(["Center wavelength: %f [nm]" %wav[np.where(ps == max(ps))],
                             "Peak power: %f [dBm]" %max(ps),
                             "Feedback_power: %f [arb.]" %fb_power,
                             'Wavelength [nm], Optical power [dBm]', f'{savename}'])
+   
     
-
-    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data_new_lensed_fiber\OSA/"
+    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Polarization vs feedback\Even more misaligned (135 deg on Poincaré)/17µW/" ##"C:\Users\Group Login\Documents\Jeppe_Surrow\Phase_1_Phase2_pow_opt\Bad_lw_high_cur\OSA/" #"C:\Users\Group Login\Documents\Maksimas Zenkevicius\13-14.12.25/"
     if save:
         np.savetxt(folder + pic.datetimestring() + "OSA_spectrum.txt", np.transpose([wav, ps]), delimiter = ',', header = txt_header)
         plt.savefig(folder + pic.datetimestring() + "OSA_spectrum.png")
@@ -642,8 +647,7 @@ def ESA_measurement(ESA, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_
 
 
 def plot_ESA(ESA, measurementname = str, save_name=str, delay_length = float, modulation_frequency = any, V_pp = float, feedback_ratio = str, laserPower = any, laser_ref = any, feedbackPower = any, save_plots_data=True, resolution_BW_dsh=0.001, freqcenter_dsh = 80, span_ESA_dsh = 20, resolution_BW_full=0.05, freqcenter_full = 80,span_ESA_full = 100, sweepcount = 100, voltage_DC = float, temperature = float):
-    
-        
+
     
     data_full_ESA, data_peak_ESA = ESA_measurement(ESA, resolution_BW_dsh, freqcenter_dsh, span_ESA_dsh, resolution_BW_full, freqcenter_full, span_ESA_full, sweepcount)
     print(span_ESA_dsh, resolution_BW_full, freqcenter_full, span_ESA_full)
@@ -696,7 +700,7 @@ def plot_ESA_fast(tracenumber = 1, powermeter_power=104, fb_power=1, gain = 110,
         plt.ylabel('ESA Power [dBm]')
         plt.xlabel('Fourier frequency [MHz]')
         plt.title('ESA spectrum')
-    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data\RIN/"
+    folder = r"C:\Users\Group Login\Documents\Mads krogh bänsch\RIN"
     #plot_OSA(savename = f'gain: {gain}', save=True,fb_power=fb_power)
 
     np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', data_ESA, header = f'{powermeter_power}uW output, fb = {fb_power}uW, Pol: {pol}, rbw={rbw}Hz, counts=50')
@@ -706,7 +710,7 @@ def plot_ESA_fast(tracenumber = 1, powermeter_power=104, fb_power=1, gain = 110,
     
     return data_ESA
 
-def plot_psd(delay=30,rbw=1e2,center=78.5e6):
+def plot_psd(delay=30,rbw=1e2,center=79.5e6, folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data_new_params\CSH\200_counts_no_TEC/" ):
     
     data_ESA = plot_ESA_fast(plot=False)
     freqs = data_ESA[0,:] - center 
@@ -715,7 +719,7 @@ def plot_psd(delay=30,rbw=1e2,center=78.5e6):
     n=1.5
     c = 3e8
     carrier_power = max(ps_raw)
-    time_delay = abs(delay - 3)*n/c
+    time_delay = abs(delay - 3.015)*n/c
     prop_factor = 2*np.pi**2 * time_delay**2 * k * rbw *carrier_power
     ps = ps_raw / prop_factor
     linewidth = min(ps) * np.pi
@@ -723,17 +727,41 @@ def plot_psd(delay=30,rbw=1e2,center=78.5e6):
     plt.loglog(freqs,ps)
     plt.grid()
     plt.ylim([1e0,1e10])
-    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data_new_lensed_fiber\200 counts/"
-    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa_kHz.txt', np.transpose([freqs,ps]), header = 'Fourier frequencies [Hz], FN PSD [Hz$^2$/Hz], 200 counts')
+    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', np.transpose([freqs,ps]), header = f'Fourier frequencies [Hz], FN PSD [Hz$^2$/Hz], 200 counts, rbw={rbw}')
     return data_ESA
 
 
-def mult_PSD(number):
+def mult_PSD(number,rbw, delay, peak_center=79.5e6):
+    
+    PM,PM_feedback = connect_to_instruments(False, False, False, False, True, True, False)[4:6]
+    
+    folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Polarization vs feedback\Even more misaligned (135 deg on Poincaré)\17µW\200 counts/" #rC:\Users\Group Login\Documents\Jeppe_Surrow\LEF\Test\NKT_direct\200_counts/"
+
+
+    PM_power=[0]*number
+    times = ['t']*number
+    
+    PM_feedback_power=[0]*number
+    
     
     for i in range(number):
-        plot_psd()
+        plot_psd(rbw=rbw,center=peak_center, folder=folder, delay=delay)
+        PM_power[i] = PM.GetPower()
+        PM_feedback_power[i] = PM_feedback.GetPower()
+        
+        times[i] = pic.datetimestring(microsecond=True)
         
         time.sleep(15)
+        
+    
+  
+
+    data = np.transpose([times, PM_power, PM_feedback_power])
+    np.savetxt(folder + 'power.txt', data, fmt='%s', header='Time, power, feedback_power')
+    PM.closeConnection()
+    PM_feedback.closeConnection()
+
+
         
 
 def get_ESA_peak(tracenumber = 1):
@@ -758,7 +786,7 @@ def sample_ESA_peak(tracenumber=1,time_seconds = 3600):
     time_stamps =[]
     ps = []
     while (time.time() - start_time) < time_seconds:
-        time_stamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S:%f")
+        time_stamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         peaks.append(get_ESA_peak())
         ps.append(pm100.GetPower()*1e6)
         time_stamps.append(time_stamp)
@@ -766,7 +794,7 @@ def sample_ESA_peak(tracenumber=1,time_seconds = 3600):
         time.sleep(0.5)
     folder = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Weird_data\Beatnote/"
     data = np.array([time_stamps, peaks,ps])
-    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', np.transpose(data), header = 'Time[d/m/Y H:M:S:f] Frequency[Hz] Power[uW]',fmt='%s')
+    np.savetxt(folder + pic.datetimestring(microsecond=True) + 'esa.txt', np.transpose(data), header = 'Time[s] Frequency[Hz] Power[uW]',fmt='%s')
     pm100.closeConnection()
     return data
 
@@ -1095,7 +1123,7 @@ def save_ESA_plot_file(data=list, sweepcount = int, measurementname=str):
 
 def create_folder(OSA_peak,date_time):
     
-    path = r'C:\Users\Group Login\Documents\Jeppe_Surrow\Laser_sweep_50_50_SIL'
+    path = r"C:\Users\Group Login\Documents\Jeppe_Surrow\Laser_sweep_port_2"#'C:\Users\Group Login\Documents\Jeppe_Surrow\Laser_sweep_50_50_SIL'
     
     new_path = f'{path}\\{OSA_peak*1e9}_{date_time}'
     
@@ -1173,38 +1201,46 @@ def good_SMSR(OSA,OSA_dict,ESA,PM_laser,PM_feedback,TOSA_params):
 #%%% U-shaped packaged laser sweep with self-injection locking
 
 
-mirror_sweep = np.linspace(0,20,int(2e2+1))
+mirror_sweep = np.linspace(0,10,int(1e1+1))
 
-def sweep_laser_settings(mirror_sweep=mirror_sweep):
+def sweep_laser_settings(mirror_sweep1=mirror_sweep, mirror_sweep2=mirror_sweep):
     
     
-    [TOSA,OSA,ESA,_,_,PM_laser,PM_feedback,_] = connect_to_instruments(TOSA_bool = True, OSA_bool =True, ESA_bool = True, EOM_bool = False, Laser_Powermeter_bool = False, Feedback_Powermeter_bool = True, MZI_Powermeter_bool=True, DC_supply_bool = False)
+    [TOSA,OSA,_,_,PM,_,_,_] = connect_to_instruments(TOSA_bool = True, OSA_bool =True, ESA_bool = False, EOM_bool = False, Laser_Powermeter_bool = True, Feedback_Powermeter_bool = False, MZI_Powermeter_bool=False, DC_supply_bool = False)
     
-    ESA.ContDisplay()
+    #ESA.ContDisplay()
 
-    for mirror_voltage in mirror_sweep:
+    for mirror_voltage2 in mirror_sweep2:
         
-        print(mirror_voltage)
+        for mirror_voltage1 in mirror_sweep1:
+            print(mirror_voltage1,mirror_voltage2)
     
-        for laser_phase in np.linspace(0,10,51):
+            for laser_phase in np.linspace(0,10,3):
             
             
             
-            TOSA_params = set_Tosa_params(TOSA, m1curr = mirror_voltage, m2curr = 0, lphcurr = laser_phase, lgcurr = 110, soa1curr = 80, soa2curr = 80, ph1curr = 0, ph2curr = 0)
-            
-            time.sleep(0.01)
-
-            OSA_dict = OSA_SMSR(OSA)
+                TOSA_params = set_Tosa_params(TOSA, m1curr = mirror_voltage1, m2curr = mirror_voltage2, lphcurr = laser_phase, lgcurr = 110, soa1curr = 80, soa2curr = 80, ph1curr = 0, ph2curr = 0)
+                
+                              
+                time.sleep(0.01)
+                
+                power = PM.GetPower()
+                
+                if power > 100e-6:
     
-            if (OSA_dict['SideMode1_SMSR']>=35) and (OSA_dict['SideMode2_SMSR']>=35):
+                    OSA_dict = OSA_SMSR(OSA)
+    
+                    if (OSA_dict['SideMode1_SMSR']>=35) and (OSA_dict['SideMode2_SMSR']>=35):
         
 
-                good_SMSR(OSA,OSA_dict,ESA,PM_laser,PM_feedback,TOSA_params)
+                        good_SMSR(OSA,OSA_dict,ESA,PM_laser,PM_feedback,TOSA_params)
             
-                break
+                        break
 
-
+start_time = time.time()
 sweep_laser_settings()
+print("--- %s seconds ---" % (time.time() - start_time))
+
 
 
 '''
