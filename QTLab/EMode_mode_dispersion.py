@@ -11,10 +11,6 @@ w_core = 1140        # [nm] waveguide core width
 h_core = 350         # [nm] waveguide core height (fixed for this platform)
 num_modes = 2        # [-] number of modes
 
-# cladding thickness. Just needs to exceed the mode's decay length. 
-# Top cladding is thin (only 100 nm of oxide before air); 
-# side and bottom just need to be big enough for the mode to have decayed to ~0 by the window edge.
-
 w_clad = 1500        # [nm] side cladding thickness (SiO2), each side
 h_clad = 1500        # [nm] bottom cladding thickness (SiO2)
 h_clad_top = 100     # [nm] top cladding thickness (SiO2)
@@ -29,14 +25,21 @@ window_width = w_core + 2 * w_clad
 clad_height = h_clad + h_core + h_clad_top   # bottom clad + core + thin top clad
 window_height = clad_height + h_air
 
+etch_depth = h_core  # [nm] 
+
 
 em = emc.EMode(simulation_name='modes', clear='mine')
 em.settings(wavelength=wavelength, x_resolution=dx, y_resolution=dy,
             window_width=window_width, window_height=window_height,
             num_modes=num_modes, background_material='Air')
 
-em.shape(name='clad', material='SiO2', width=window_width, height=clad_height, position=[0, clad_height / 2])
-em.shape(name='core', material='SiN', width=w_core, height=h_core, position=[0, h_clad + h_core / 2])
+em.shape(name = 'clad', material = 'SiO2', width = window_width, height = clad_height)
+
+em.shape(name = 'core', material = 'SiN', width = window_width, height = h_core, mask = w_core, etch_depth = etch_depth, fill_material = 'SiO2')
+
+em.shape(name = 'clad_top', material = 'SiO2', width = window_width, height = h_clad_top)
+
+
 
 em.FDM()
 report = em.report()

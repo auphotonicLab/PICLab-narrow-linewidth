@@ -2,40 +2,7 @@
 scope_communication_lab.py
 
 USB control of a Siglent SDS800X HD oscilloscope for the teaching lab.
-Every function just sends SCPI commands to the instrument -- see the SDS
-Series Programming Guide for the full command reference.
-
-Install once:
-    pip install pyvisa pyvisa-py numpy
-
-Example experiment run:
-
-    import scope_communication_lab as scope
-
-    inst = scope.connect()
-
-    scope.set_vertical(inst, 1, volts_per_div=0.5)
-    scope.set_vertical(inst, 2, volts_per_div=1.0)
-    scope.set_horizontal(inst, seconds_per_div=1e-3)
-    scope.set_trigger(inst, channel=1, level=0.1)
-    scope.set_memory_depth(inst, "1M")
-
-    scope.single_trigger(inst)
-    t, v1 = scope.get_waveform(inst, 1)
-    t, v2 = scope.get_waveform(inst, 2)
-
-    scope.save_waveform(inst, "my_measurement.npz", t, {1: v1, 2: v2})
-
-To load a saved measurement back later (e.g. in an analysis script):
-
-    import numpy as np
-    data = np.load("my_measurement.npz")
-    t, v1 = data["time_s"], data["CH1_volts"]
-    print(str(data["instrument_idn"]), float(data["timebase_s_div"]))
-
-Note on the time axis: t starts at zero at the first recorded sample. It is
-not referenced to the trigger. Use the laser's sweep-synchronisation signal,
-recorded on its own channel, to find where the sweep actually starts.
+Sends SCPI commands to the instrument.
 """
 
 import struct
@@ -49,68 +16,12 @@ SERIAL = "SDS08A0D911874"
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers -- retry wrappers for two quirks of this instrument.
-# Everything below this section is plain SCPI: write a command, or query
-# and parse the reply.
-# ---------------------------------------------------------------------------
-
-def _query(inst, cmd, retries=5, delay=0.05):
-    """inst.query(), but retries on an empty reply.
-
-    Right after a large :WAVeform:DATA? block transfer, the very next SCPI
-    query sometimes comes back empty (a transport hiccup, not a real error --
-    the scope is just still catching its breath). Retrying a few ms later
-    always succeeds, so treat that as normal instead of crashing."""
-    for attempt in range(retries):
-        reply = inst.query(cmd)
-        if reply != "":
-            return reply
-        time.sleep(delay)
-    raise RuntimeError(f"Scope gave no reply to {cmd!r} after {retries} retries")
-
-
-def _query_binary(inst, cmd, retries=3, timeout_ms=60000):
-    """inst.query_binary_values(), but recovers from a corrupted or
-    incomplete block instead of crashing.
-
-    At large memory depths (e.g. 10M points = 20 MB for one WORD-width
-    channel), a :WAVeform:DATA? transfer that gets interrupted -- a timeout
-    mid-read, a cell that was manually stopped -- leaves the tail end of that
-    block sitting unread in the USB buffer. The *next* read then finds those
-    stray bytes instead of a fresh '#' block header, and pyvisa raises a
-    ValueError. inst.clear() flushes the stale bytes; retrying after that
-    reliably recovers. Also gives big transfers more time than the default
-    query timeout, since 20+ MB over USB can take longer than 20 s."""
-    orig_timeout = inst.timeout
-    inst.timeout = timeout_ms
-    try:
-        for attempt in range(retries):
-            try:
-                return inst.query_binary_values(
-                    cmd, datatype="B", container=bytes, header_fmt="ieee"
-                )
-            except (ValueError, pyvisa.errors.VisaIOError):
-                inst.clear()
-                time.sleep(0.2)
-        raise RuntimeError(
-            f"Scope gave a corrupted or incomplete reply to {cmd!r} after "
-            f"{retries} retries, even after flushing the interface. Try "
-            f"reconnecting with connect()."
-        )
-    finally:
-        inst.timeout = orig_timeout
-
-
-# ---------------------------------------------------------------------------
 # Connection
 # ---------------------------------------------------------------------------
 
 def connect(resource=None):
-    """Open a USB connection to the scope.
-
-    Prints every VISA resource the computer can see, so you can find the
-    right resource name to pass in by hand if the automatic choice picks the
-    wrong one (e.g. if another USB instrument is connected too)."""
+    """Open a USB connection to the scope. Pass `resource` by hand if
+    another USB instrument confuses the automatic serial-number match."""
     rm = pyvisa.ResourceManager()
     resources = rm.list_resources()
     print("Available VISA resources:", resources)
@@ -145,7 +56,7 @@ def set_horizontal(inst, seconds_per_div, delay=0.0):
 
 
 def set_trigger(inst, channel=1, level=0.0, slope="RISing"):
-    """A simple edge trigger on one channel."""
+    """A simple edge trigger on one channel. `level` is the trigger voltage, in V."""
     inst.write(":TRIGger:TYPE EDGE")
     inst.write(f":TRIGger:EDGE:SOURce C{channel}")
     inst.write(f":TRIGger:EDGE:LEVel {level}")
@@ -153,18 +64,12 @@ def set_trigger(inst, channel=1, level=0.0, slope="RISing"):
 
 
 def set_memory_depth(inst, points, retries=5, delay=0.3):
-    """Number of datapoints to capture, given as a string: "10k", "1M", "10M".
-    Legal values depend on the model and the number of channels in use --
-    see :ACQuire:MDEPth in the Programming Guide.
+    """Number of datapoints to capture, e.g. "10k", "1M", "10M". Legal values
+    depend on the model/channel count -- see :ACQuire:MDEPth in the guide.
 
-    Confirmed empirically: this scope silently ignores :ACQuire:MDEPth (no
-    SCPI error, it just keeps the old value) when the request is sent while
-    the acquisition is fully stopped -- the opposite of the front panel,
-    which requires you to STOP before changing it from the menu. Over SCPI it
-    only takes effect while the scope is actively running, so this puts it
-    into a free-running state, writes the depth, and checks it stuck before
-    returning. Call it before single_trigger(), which re-arms the scope
-    anyway; calling it afterwards would throw away the record you just took."""
+    The scope only accepts :ACQuire:MDEPth while running, not while stopped,
+    so this puts it into free-run first and checks the value stuck. Call it
+    before single_trigger(), not after -- that would throw away the record."""
     inst.write(":TRIGger:MODE AUTO")
     inst.write(":TRIGger:RUN")
     time.sleep(0.3)
@@ -176,10 +81,9 @@ def set_memory_depth(inst, points, retries=5, delay=0.3):
             return
     raise RuntimeError(
         f"Requested memory depth {points!r} did not take effect after "
-        f"{retries} retries (scope still reports {got!r}). Check that it is a "
-        f"legal value for your model and channel count (:ACQuire:MDEPth in "
-        f"the Programming Guide), and that Memory Management isn't capping it "
-        f"lower (:ACQuire:MMANagement?)."
+        f"{retries} retries (scope still reports {got!r}). Check it's a "
+        f"legal value for this model/channel count, and that Memory "
+        f"Management isn't capping it lower (:ACQuire:MMANagement?)."
     )
 
 
@@ -188,13 +92,9 @@ def set_memory_depth(inst, points, retries=5, delay=0.3):
 # ---------------------------------------------------------------------------
 
 def single_trigger(inst, timeout_s=30):
-    """Arm one single acquisition and wait for it to complete. All enabled
-    channels are captured together from this one trigger event -- that is
-    what makes their waveforms directly comparable afterwards.
-
-    Raises TimeoutError if the trigger condition is never met, rather than
-    returning quietly and letting you read stale data from the previous
-    acquisition."""
+    """Arm one single acquisition and wait for it to complete, so all
+    enabled channels come from the same trigger event. Raises TimeoutError
+    rather than silently leaving stale data from the previous acquisition."""
     inst.write(":TRIGger:MODE SINGle")
     inst.write(":TRIGger:RUN")
     start = time.time()
@@ -208,12 +108,10 @@ def single_trigger(inst, timeout_s=30):
 
 
 def get_waveform(inst, channel):
-    """Read one channel's captured waveform. Returns (time_seconds, volts)
-    as numpy arrays.
-
-    A single :WAVeform:DATA? query can only return up to :WAVeform:MAXPoint
-    points at a time, so for large memory depths (e.g. 10M points) this reads
-    the waveform in chunks and stitches them back together."""
+    """Read one channel's captured waveform as (time_seconds, volts) numpy
+    arrays. Reads in chunks of :WAVeform:MAXPoint and stitches them together,
+    since a single :WAVeform:DATA? query can't return the whole record at
+    large memory depths."""
     if _query(inst, ":TRIGger:STATus?") != "Stop":
         raise RuntimeError(
             "The scope is still acquiring -- run single_trigger() first, "
@@ -234,9 +132,7 @@ def get_waveform(inst, channel):
         inst.write(f":WAVeform:STARt {start}")
         inst.write(f":WAVeform:POINt {chunk_size}")
         if preamble is None:
-            # The preamble tells us how to turn raw codes into volts and
-            # seconds (byte offsets are from the ":WAVeform:PREamble" table
-            # in the Programming Guide).
+            # byte offsets below are from the ":WAVeform:PREamble" table
             preamble = _query_binary(inst, ":WAVeform:PREamble?")
         raw = _query_binary(inst, ":WAVeform:DATA?")
         if not raw:
@@ -245,11 +141,7 @@ def get_waveform(inst, channel):
                 f"No waveform data for C{channel}: either the channel is "
                 f"switched off, or the scope has no acquisition in memory."
             )
-        # 16-bit signed, LOW byte first (little-endian). Decoding these as
-        # big-endian ('>i2') swaps the bytes, which turns the fine 16-count
-        # ADC steps into 256-count jumps and makes the trace collapse onto a
-        # handful of discrete levels.
-        codes.append(np.frombuffer(raw, dtype="<i2"))
+        codes.append(np.frombuffer(raw, dtype="<i2"))  # little-endian i16
         start += chunk_size
     codes = np.concatenate(codes)
 
@@ -266,10 +158,6 @@ def get_waveform(inst, channel):
         )
 
     volts = codes * (vertical_gain / code_per_div) - vertical_offset
-
-    # t = 0 is the first recorded sample, NOT the trigger. Only time
-    # differences matter for anything measured in this lab; to find where
-    # the laser sweep starts, look at the sweep-synchronisation signal.
     t = np.arange(len(volts)) * sample_interval
     return t, volts
 
@@ -280,20 +168,9 @@ def get_waveform(inst, channel):
 
 def save_waveform(inst, filename, t, channels):
     """Save time + one or more channels' voltage, plus the instrument's
-    current settings, to a single compressed .npz file (much smaller and
-    faster than a CSV at millions of points).
-
-    `channels` is a dict of {channel_number: voltage_array}, e.g. {1: v1, 2: v2}.
-
-    The settings are read back from the instrument rather than copied from
-    whatever was requested earlier, so the file records what the scope was
-    actually doing.
-
-    Load it back with:
-        data = np.load("my_measurement.npz")
-        t, v1 = data["time_s"], data["CH1_volts"]
-        print(str(data["instrument_idn"]), float(data["timebase_s_div"]))
-    """
+    current settings, to a compressed .npz file. `channels` is a dict of
+    {channel_number: voltage_array}, e.g. {1: v1, 2: v2}. Settings are read
+    back from the instrument so the file records what it actually did."""
     arrays = {
         "time_s": t,
         "instrument_idn": _query(inst, "*IDN?"),
@@ -314,3 +191,41 @@ def save_waveform(inst, filename, t, channels):
 
     np.savez_compressed(filename, **arrays)
     print("Saved", filename, "-- load it back with np.load()")
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _query(inst, cmd, retries=5, delay=0.05):
+    """inst.query(), retrying on an empty reply (happens right after a big
+    :WAVeform:DATA? transfer -- the scope just needs a moment)."""
+    for attempt in range(retries):
+        reply = inst.query(cmd)
+        if reply != "":
+            return reply
+        time.sleep(delay)
+    raise RuntimeError(f"Scope gave no reply to {cmd!r} after {retries} retries")
+
+
+def _query_binary(inst, cmd, retries=3, timeout_ms=60000):
+    """inst.query_binary_values(), recovering from a corrupted/incomplete
+    block (happens on large transfers, e.g. 10M points) by flushing with
+    inst.clear() and retrying. Also raises the timeout for big transfers."""
+    orig_timeout = inst.timeout
+    inst.timeout = timeout_ms
+    try:
+        for attempt in range(retries):
+            try:
+                return inst.query_binary_values(
+                    cmd, datatype="B", container=bytes, header_fmt="ieee"
+                )
+            except (ValueError, pyvisa.errors.VisaIOError):
+                inst.clear()
+                time.sleep(0.2)
+        raise RuntimeError(
+            f"Scope gave a corrupted or incomplete reply to {cmd!r} after "
+            f"{retries} retries, even after flushing the interface. Try "
+            f"reconnecting with connect()."
+        )
+    finally:
+        inst.timeout = orig_timeout
