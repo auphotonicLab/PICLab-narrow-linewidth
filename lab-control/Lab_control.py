@@ -879,14 +879,14 @@ class AFG_Siglent:
         resourceName ='TCPIP0::' + IP_address + '::inst0::INSTR'
         self.instr = rm.open_resource(resourceName)
         alive = self.instr.query('*IDN?')
-        
+
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
         self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
         self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
         self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(offset))
-        
+
         self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
-        
+
         if alive != 0:
             print('AFG_SIGLENT is alive')
             print(alive)
@@ -914,9 +914,74 @@ class AFG_Siglent:
         self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
 
 
-    def output_status(self,channel=1,status='ON'):
+    def setPRBS(self, channel=1, bit_rate=1e9, sequence='PRBS7',
+                amplitude=1.0, load=50):
+        """Output a PRBS sequence (pure AC, zero DC offset).
+
+        The DC bias offset for the amplitude modulator must be supplied externally by a DC supply.
+
+        Parameters
+        ----------
+        channel : int
+            Output channel (1 or 2).
+        bit_rate : float
+            Data bit rate in bps.
+        sequence : str
+            PRBS sequence: 'PRBS3', 'PRBS7', 'PRBS9', 'PRBS15', 'PRBS23', 'PRBS31'.
+        amplitude : float
+            Peak-to-peak amplitude in V.
+        load : int or str
+            Load impedance in Ohm, or 'HZ' for high-impedance.
+        """
+        ch = 'C' + str(channel)
+        self.instr.write(ch + ':BSWV WVTP,PRBS')
+        self.instr.write(ch + ':BSWV FRQ,' + str(int(bit_rate)))   # SDG6022X uses FRQ for PRBS bit rate
+        self.instr.write(ch + ':PRBS BRAT,' + str(int(bit_rate)))  # belt-and-suspenders
+        self.instr.write(ch + ':PRBS SEQ,' + sequence)
+        self.instr.write(ch + ':BSWV AMP,' + str(amplitude))
+        self.instr.write(ch + ':BSWV OFST,0')  # pure AC; DC offset handled by SPD3303X
+        self.instr.write(ch + ':BSWV PHSE,0')  # reference phase for clock alignment
+        self.instr.write(ch + ':OUTP LOAD,' + str(load))
+
+    def setClock(self, channel=2, bit_rate=1e9, amplitude=3.3, offset=1.65,
+                load='HZ', rise_time=2e-9):
+        """Output a square-wave clock for oscilloscope triggering during eye diagram.
+
+        Clock frequency = bit rate (one edge per bit period).
+
+        Both SDG6022X channels share the same internal master oscillator, so
+        the clock and PRBS are inherently phase-locked and cannot drift.
+        Default values produce a 0–3.3 V logic-level signal (LVCMOS 3.3 V
+        compatible) with a 2 ns rise time, suitable for clean edge triggering.
+
+        Parameters
+        ----------
+        channel : int
+            Output channel (1 or 2).
+        bit_rate : float
+            Bit rate in bps; square-wave frequency = bit_rate.
+        amplitude : float
+            Peak-to-peak amplitude in V (default 3.3 V).
+        offset : float
+            DC offset in V (default 1.65 V → signal swings 0 to 3.3 V).
+        load : int or str
+            Load impedance in Ohm, or 'HZ' for high-impedance (default).
+        rise_time : float
+            Rise/fall time in seconds (default 2 ns — SDG6022X minimum).
+        """
+        ch = 'C' + str(channel)
+        self.instr.write(ch + ':BSWV WVTP,SQUARE')
+        self.instr.write(ch + ':BSWV FRQ,' + str(bit_rate))
+        self.instr.write(ch + ':BSWV AMP,' + str(amplitude))
+        self.instr.write(ch + ':BSWV OFST,+' + str(offset))
+        self.instr.write(ch + ':BSWV DUTY,50')
+        self.instr.write(ch + ':BSWV RISE,' + str(rise_time))
+        self.instr.write(ch + ':BSWV PHSE,0')   # align starting edge to channel 1
+        self.instr.write(ch + ':OUTP LOAD,' + str(load))
+
+    def output_status(self, channel=1, status='ON'):
         self.instr.write('C' + str(channel) + ':OUTP ' + str(status))
-    
+
     def CloseConnection(self):
         self.instr.close()
 
@@ -928,49 +993,45 @@ class DC_Siglent: #Developer: Jeppe Surrow
         def __init__(self,
                      channel=1,
                      current=0,
-                     voltage=1, TCP = True, IP_address = '192.168.1.31'):
+                     voltage=1, TCP = True, IP_address = '192.168.1.31',
+                     max_voltage=7):
             self.current = current
-            self.voltage = voltage
             self.channel = channel
-            
-            if voltage > 5: #To ensure we don't fry the Variable Optical Attenuator (max 10V, operational from 0 to 5V)
-                voltage=5
+            self.max_voltage = max_voltage
+
+            if voltage > self.max_voltage:
+                raise ValueError(
+                    f'Requested voltage {voltage} V exceeds max_voltage '
+                    f'{self.max_voltage} V. Refusing to set output.')
+            self.voltage = voltage
             
             rm = visa.ResourceManager()
             if TCP:
-                resourceName ='TCPIP0::' + IP_address + '::inst0::INSTR'
-            else: 
+                resourceName = 'TCPIP0::' + IP_address + '::5025::SOCKET'
+            else:
                 resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
 
             self.instr = rm.open_resource(resourceName)
-            self.instr.write_termination='\n' #Modify termination character
-            self.instr.read_termination='\n' #Modify termination character
-            #self.instr.timeout = 10000
-            #self.instr.baud_rate = 57600
-            
-            time.sleep(0.04) #Wait
-            
-            '''
-            self.instr.write('OUTP CH1,OFF') #Turn off output
-            time.sleep(2) #Wait
-            '''
-            self.instr.write('*IDN?') #Write instrument and ask for identification string
-            time.sleep(0.5) #Wait
-            alive = self.instr.read('\n') #Read instrument response
-            
-            time.sleep(0.04) #Wait
-            
-            self.instr.write('OUTP CH1,ON') #Turn on output
-            time.sleep(0.5) #Wait
+            self.instr.write_termination = '\n'
+            self.instr.read_termination = '\n'
+            self.instr.timeout = 5000
 
-            
-            self.instr.write('CH' + str(channel) + ':CURR ' + str(current) ) # ampere
-            time.sleep(0.04) #Wait
-            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))  # volts
-            
-            if alive != 0:
+            time.sleep(0.1)
+
+            alive = self.instr.query('*IDN?')
+
+            # Set voltage and current BEFORE enabling output
+            self.instr.write('CH' + str(channel) + ':CURR ' + str(current))
+            time.sleep(0.04)
+            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
+            time.sleep(0.1)
+
+            self.instr.write('OUTP CH' + str(channel) + ',ON')
+            time.sleep(0.5)
+
+            if alive:
                 print('DC_SIGLENT is alive')
-                print (str(alive))
+                print(str(alive))
             
             '''
             self.IsOn = self.instr.read('\n')
@@ -986,13 +1047,15 @@ class DC_Siglent: #Developer: Jeppe Surrow
                      channel=1,
                      current=0,
                      voltage=1):
-            
-            if voltage > 5:
-                voltage=5
-                
+
+            if voltage > self.max_voltage:
+                raise ValueError(
+                    f'Requested voltage {voltage} V exceeds max_voltage '
+                    f'{self.max_voltage} V. Refusing to set output.')
+
             self.instr.write('CH' + str(channel) + ':CURR ' + str(current)) #
             time.sleep(0.1) #Wait
-            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))  # 
+            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))  #
     
         
         def outputStatus(self,channel=1,status='ON'):
@@ -1005,11 +1068,14 @@ class DC_Siglent: #Developer: Jeppe Surrow
     
     
 class DC_KEITHLEY: #developer: Andreas Hänsel + functionalities added by Hanna Becker (SetIntegrationtime, GetIntegrationtime;SetMode, GetMode, SetWire, GetWire)
-                          
+    # For Keithley 2400 series (GPIB / RS-232). For the 2450 use DC_KEITHLEY_2450.
+
     def __init__(self,channel=21,GPIB_interface=0,IP_address='192.168.1.151'):
         self.Meas='Volt'
         self.Source='Current'
         self.channel = channel
+        self.__wire__ = None       # fix: initialise so GetWire() never crashes
+        self.__integtime__ = None  # fix: initialise so GetIntegrationtime() never crashes
         rm= visa.ResourceManager()
         if GPIB_interface>-1: #Set GPIB_interface=0 to use GPIB instead of TCP/IP
             resourceName = 'GPIB'+str(int(GPIB_interface))+'::'+str(channel)+'::INSTR'
@@ -1025,122 +1091,115 @@ class DC_KEITHLEY: #developer: Andreas Hänsel + functionalities added by Hanna 
             print('Keithley is alive')
             print(alive)
         time.sleep(1)
-        #:OUTP ON    
         self.IsOn=int(self.instr.query(':OUTP?'))
         if self.IsOn == 1:
             print('Source output is ON')
-        else: 
-          if self.IsOn == 0: 
+        else:
+          if self.IsOn == 0:
                 print('Source output is OFF')
-     
+
     def SwitchOn(self):
-        if self.instr.query(':OUTP?') != 1:
+        if int(self.instr.query(':OUTP?')) != 1:  # fix: int() cast so string '1' compares correctly
             self.instr.write(':OUTP ON')
             print('Source output turned ON')
-            self.IsOn = 1;
+            self.IsOn = 1
         else: print('Source output was already ON')
-        
+
     def SwitchOff(self):
-        if self.instr.query(':OUTP?') != 0:
+        if int(self.instr.query(':OUTP?')) != 0:  # fix: int() cast
             self.instr.write(':OUTP OFF')
             print('Source output turned OFF')
-            self.IsOn = 0;
+            self.IsOn = 0
         else: print('Source output was already OFF')
 
     def SetMeasCurr(self):
         self.instr.write(":SENS:FUNC 'CURR'")
         self.instr.write(":FORM:ELEM CURR")
-        self.Meas='Current';
-        
+        self.Meas='Current'
+
     def SetMeasVolt(self):
         self.instr.write(":SENS:FUNC 'VOLT'")
         self.instr.write(":FORM:ELEM VOLT")
-        self.Meas='Volt';        
-        
+        self.Meas='Volt'
+
     def SetSourceVolt(self):
-        self.instr.write('SOUR:FUNC:MODE VOLT')
-        self.Source='Volt'; 
-    
+        self.instr.write('SOUR:FUNC VOLT')  # fix: was SOUR:FUNC:MODE (invalid on 2400)
+        self.Source='Volt'
+
     def SetSourceValue(self, Value):
-        if (self.Source == 'Volt' ):
-            #self.instr.write('SOUR1:VOLT '+str(Value))
+        if (self.Source == 'Volt'):
             self.instr.write('SOUR:VOLT '+str(Value))
-        else: 
+        else:
            if (self.Source == 'Current'):
-               self.instr.write('SOUR:CURR '+str(Value)) #not tested
-        
+               self.instr.write('SOUR:CURR '+str(Value))
+
     def SetSourceCurr(self):
-        self.instr.write('SOUR:FUNC:MODE CURR')
-        self.Source='Current'; 
-        
+        self.instr.write('SOUR:FUNC CURR')  # fix: was SOUR:FUNC:MODE (invalid on 2400)
+        self.Source='Current'
+
     def SetCompliance(self, Compliance=0.05):
-        # so far compliance is based on measured value; could be changed later
         if (self.Meas == 'Current'):
             self.instr.write('SENS:CURR:PROT '+str(Compliance))
         else:
           if (self.Meas == 'Volt'):
               self.instr.write('SENS:VOLT:PROT '+str(Compliance))
-          else: 
+          else:
               print('Measurement function undefined')
-        
+
     def GetMeas(self):
         if (self.Meas == 'Current'):
-            #self.instr.write(":FORM:ELEM 'CURR'")
             Value = float((self.instr.query_ascii_values('READ?'))[0])
         else:
           if (self.Meas == 'Volt'):
-             # self.instr.write(":FORM:ELEM 'VOLT'")
               Value = float((self.instr.query_ascii_values('READ?'))[0])
-          else: 
+          else:
               print('Measurement function undefined')
-              Value=0;
-        return Value;
-    
+              Value=0
+        return Value
+
     def WriteGPIB(self, string):
-        self.instr.write(string)    
-        
+        self.instr.write(string)
+
     def QueryGPIB(self, string):
-        return self.instr.query(string) 
-    
+        return self.instr.query(string)
+
     def CloseConnection(self):
         self.instr.close()
 
-    def SetMode(self, mode_string): 
+    def SetMode(self, mode_string):
         #set 'Voltage' for voltage source, measure current
-        #set 'Current for current source, measure voltage
+        #set 'Current' for current source, measure voltage
         # ATTENTION: this setting includes a full reset and resets the compliance levels each time used!!!
         if mode_string == 'Voltage':
-                # initialization of Keithley:
-                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1") # reset etc
+                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1")
                 print ("The current limit will be set to 0.010A.")
                 print ("The voltage limit will be set to 20V.")
                 self.instr.write('SENS:CURR:PROT 0.01')
                 self.instr.write('SENS:VOLT:PROT 20')
-                self.instr.write(":SYST:RSEN OFF") # set 2 wire sensing
+                self.instr.write(":SYST:RSEN OFF")
                 self.instr.write(":SOUR:FUNC VOLT")
-                print( "The machine has been set to 2-wire (2-probe) sensing, change this by typing myInstrument.SetWire = 'Four'")
-                print( "The machine has been set to VOLTAGE mode, change this by typing myInstrument.SetMode = 'Current'")
+                print("The machine has been set to 2-wire (2-probe) sensing, change this by typing myInstrument.SetWire = 'Four'")
+                print("The machine has been set to VOLTAGE mode, change this by typing myInstrument.SetMode = 'Current'")
                 print("---------------------------------------------------------------")
-                self.instr.write(":SOUR:VOLT:MODE FIX") 
-                self.instr.write(':SENS:FUNC "CURR" ')
+                self.instr.write(":SOUR:VOLT:MODE FIX")
+                self.instr.write(':SENS:FUNC "CURR"')
                 self.instr.write(":FORM:ELEM CURR")
                 self.Source='Volt'
                 self.Meas = 'Current'
-                
+
         elif mode_string == 'Current':
-                # initialization of Keithley:
-                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1") # reset etc
+                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1")
                 print ("The current limit will be set to 0.010A.")
                 print ("The voltage limit will be set to 20V.")
                 self.instr.write('SENS:CURR:PROT 0.01')
                 self.instr.write('SENS:VOLT:PROT 20')
-                self.instr.write(":SYST:RSEN OFF") # set 2 wire sensing
+                self.instr.write(":SYST:RSEN OFF")
                 self.instr.write(":SOUR:FUNC CURR")
-                print( "The machine has been set to 2-wire (2-probe) sensing, change this by typing myInstrument.SetWire = 'Four'")
-                print( "The machine has been set to CURRENT mode, change this by typing myInstrument.SetMode = 'Voltage'")
+                print("The machine has been set to 2-wire (2-probe) sensing, change this by typing myInstrument.SetWire = 'Four'")
+                print("The machine has been set to CURRENT mode, change this by typing myInstrument.SetMode = 'Voltage'")
                 print("---------------------------------------------------------------")
-                self.instr.write(":SOUR:CURR:MODE FIX") # Fixed current source mode
-                self.instr.write(':SENS:FUNC "VOLT" ') #Volts measure function
+                self.instr.write(":SOUR:CURR:MODE FIX")
+                self.instr.write(':SENS:FUNC "VOLT"')
                 self.instr.write(":FORM:ELEM VOLT")
                 self.Source='Current'
                 self.Meas = 'Volt'
@@ -1148,27 +1207,27 @@ class DC_KEITHLEY: #developer: Andreas Hänsel + functionalities added by Hanna 
                 AttributeError("Got invalid reponse for mode of the instrument: requires 'Voltage' or 'Current' but got %s" %str(mode_string))
 
     def GetMode(self):
-        return self.Source   
-    
+        return self.Source
+
     def SetWire(self,wire):
         if wire == None:
-                self.instr.write(":SYST:RSEN OFF")  
-        elif wire == 'Two':                         
+                self.instr.write(":SYST:RSEN OFF")
+        elif wire == 'Two':
                 self.instr.write(":SYST:RSEN OFF")
                 self.__wire__ = 'Two'
-        elif wire == 'Four':                        
+        elif wire == 'Four':
                 if self.Source == 'Volt':
-                        print( "4-wire sensing possible only with 'Current' mode. Change mode from 'Voltage' to 'Current'. Now executing 2-wire sensing.")
+                        print("4-wire sensing possible only with 'Current' mode. Change mode from 'Voltage' to 'Current'. Now executing 2-wire sensing.")
                 elif self.Source == 'Current':
                         self.instr.write(":SYST:RSEN ON")
                         self.__wire__ = 'Four'
-                        print( "Sensing set by user as 4-wire. Resetting machine to 4-wire sensing")
+                        print("Sensing set by user as 4-wire. Resetting machine to 4-wire sensing")
         else:
                 AttributeError("Got invalid reponse for mode of the instrument: requires 'Two' or 'Four' but got %s" %str(wire))
 
     def GetWire(self):
         return self.__wire__
-                        
+
     def SetIntegrationtime(self, int_time=1.00):
         #  integration time is specified in parameters based on the number of power line cycles (NPLC)
         # FAST — Sets speed to 0.01 PLC and sets display resolution to 3½ digits.
@@ -1180,7 +1239,166 @@ class DC_KEITHLEY: #developer: Andreas Hänsel + functionalities added by Hanna 
                 self.instr.write(":SENS:CURR:NPLC %g" % int_time)
         else:
                 self.instr.write(":SENS:VOLT:NPLC %g" % int_time)
-        self.__integtime__ = int_time        
+        self.__integtime__ = int_time
+
+    def GetIntegrationtime(self):
+        return self.__integtime__
+
+
+# =============================================================================
+# Keithley 2450 SourceMeter (LAN / USB / GPIB)
+# =============================================================================
+
+class DC_KEITHLEY_2450: #developer: Jeppe Surrow — 2450-specific SCPI commands
+    # Compliance lives on the source side (SOUR:VOLT:ILIM / SOUR:CURR:VLIM).
+    # Remote sense uses per-function commands (SENS:CURR:RSEN / SENS:VOLT:RSEN).
+    # Default connection is LAN at 192.168.1.151 (VXI-11).
+
+    def __init__(self, channel=21, GPIB_interface=-1, IP_address='192.168.1.151'):
+        self.Meas = 'Volt'
+        self.Source = 'Current'
+        self.channel = channel
+        self.__wire__ = None
+        self.__integtime__ = None
+        rm = visa.ResourceManager()
+        if GPIB_interface > -1:
+            resourceName = 'GPIB' + str(int(GPIB_interface)) + '::' + str(channel) + '::INSTR'
+        else:
+            resourceName = 'TCPIP0::' + IP_address + '::inst0::INSTR'
+        self.instr = rm.open_resource(resourceName)
+        self.instr.read_termination = '\n'
+        self.instr.write_termination = '\n'
+        self.instr.timeout = 10000
+        alive = self.instr.query('*IDN?')
+        if alive != 0:
+            print('Keithley 2450 is alive')
+            print(alive)
+        time.sleep(1)
+        self.IsOn = int(self.instr.query(':OUTP?'))
+        if self.IsOn == 1:
+            print('Source output is ON')
+        else:
+            if self.IsOn == 0:
+                print('Source output is OFF')
+
+    def SwitchOn(self):
+        if int(self.instr.query(':OUTP?')) != 1:
+            self.instr.write(':OUTP ON')
+            print('Source output turned ON')
+            self.IsOn = 1
+        else: print('Source output was already ON')
+
+    def SwitchOff(self):
+        if int(self.instr.query(':OUTP?')) != 0:
+            self.instr.write(':OUTP OFF')
+            print('Source output turned OFF')
+            self.IsOn = 0
+        else: print('Source output was already OFF')
+
+    def SetMeasCurr(self):
+        self.instr.write(":SENS:FUNC 'CURR'")
+        self.Meas = 'Current'
+
+    def SetMeasVolt(self):
+        self.instr.write(":SENS:FUNC 'VOLT'")
+        self.Meas = 'Volt'
+
+    def SetSourceVolt(self):
+        self.instr.write('SOUR:FUNC VOLT')
+        self.Source = 'Volt'
+
+    def SetSourceValue(self, Value):
+        if self.Source == 'Volt':
+            self.instr.write('SOUR:VOLT ' + str(Value))
+        elif self.Source == 'Current':
+            self.instr.write('SOUR:CURR ' + str(Value))
+
+    def SetSourceCurr(self):
+        self.instr.write('SOUR:FUNC CURR')
+        self.Source = 'Current'
+
+    def SetCompliance(self, Compliance=0.05):
+        # 2450: compliance is set on the source side, not the sense side
+        if self.Source == 'Volt':
+            self.instr.write('SOUR:VOLT:ILIM ' + str(Compliance))   # current limit (A)
+        elif self.Source == 'Current':
+            self.instr.write('SOUR:CURR:VLIM ' + str(Compliance))   # voltage limit (V)
+        else:
+            print('Source function undefined')
+
+    def GetMeas(self):
+        if self.Meas in ('Current', 'Volt'):
+            Value = float((self.instr.query_ascii_values('READ?'))[0])
+        else:
+            print('Measurement function undefined')
+            Value = 0
+        return Value
+
+    def WriteGPIB(self, string):
+        self.instr.write(string)
+
+    def QueryGPIB(self, string):
+        return self.instr.query(string)
+
+    def CloseConnection(self):
+        self.instr.close()
+
+    def SetMode(self, mode_string):
+        # 'Voltage' → source 0 V, measure current (ammeter mode)
+        # 'Current' → source 0 A, measure voltage
+        # ATTENTION: performs *RST — resets compliance; call SetCompliance() afterwards if needed
+        if mode_string == 'Voltage':
+                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1")
+                self.instr.write(':SOUR:FUNC VOLT')
+                self.instr.write('SOUR:VOLT:ILIM 0.01')   # 10 mA current limit
+                self.instr.write(':SENS:CURR:RSEN OFF')    # 2-wire
+                self.instr.write(':SENS:FUNC "CURR"')
+                self.Source = 'Volt'
+                self.Meas = 'Current'
+                print('Keithley 2450: VOLTAGE source / CURRENT measure. Current limit = 10 mA, 2-wire.')
+
+        elif mode_string == 'Current':
+                self.instr.write("*RST;*CLS;*SRE 32;*ESE 1")
+                self.instr.write(':SOUR:FUNC CURR')
+                self.instr.write('SOUR:CURR:VLIM 20')     # 20 V voltage limit
+                self.instr.write(':SENS:VOLT:RSEN OFF')    # 2-wire
+                self.instr.write(':SENS:FUNC "VOLT"')
+                self.Source = 'Current'
+                self.Meas = 'Volt'
+                print('Keithley 2450: CURRENT source / VOLTAGE measure. Voltage limit = 20 V, 2-wire.')
+
+        else:
+                raise AttributeError("SetMode requires 'Voltage' or 'Current', got '%s'" % str(mode_string))
+
+    def GetMode(self):
+        return self.Source
+
+    def SetWire(self, wire):
+        # 2450: remote sense is per-function, not a global SYST:RSEN switch
+        if wire is None or wire == 'Two':
+                self.instr.write(':SENS:CURR:RSEN OFF')
+                self.instr.write(':SENS:VOLT:RSEN OFF')
+                self.__wire__ = 'Two'
+        elif wire == 'Four':
+                if self.Source == 'Volt':
+                        self.instr.write(':SENS:CURR:RSEN ON')
+                else:
+                        self.instr.write(':SENS:VOLT:RSEN ON')
+                self.__wire__ = 'Four'
+                print('Keithley 2450: 4-wire sensing enabled.')
+        else:
+                raise AttributeError("SetWire requires 'Two' or 'Four', got '%s'" % str(wire))
+
+    def GetWire(self):
+        return self.__wire__
+
+    def SetIntegrationtime(self, int_time=1.00):
+        #  integration time in power line cycles (NPLC): 0.01 (fast) to 10 (hi accuracy)
+        if self.Meas == 'Current':
+                self.instr.write(":SENS:CURR:NPLC %g" % int_time)
+        else:
+                self.instr.write(":SENS:VOLT:NPLC %g" % int_time)
+        self.__integtime__ = int_time
 
     def GetIntegrationtime(self):
         return self.__integtime__
@@ -1851,3 +2069,214 @@ class OSW22: #developer: Hanna Becker status 16-11-2020
     def CloseConnection(self):
         self.instr.close()
         print('OSW22 connection closed')
+
+# =============================================================================
+# R&S RTO1024 Oscilloscope
+# =============================================================================
+
+class RTO1024:
+    """Rohde & Schwarz RTO1024 oscilloscope over Ethernet.
+
+    Parameters
+    ----------
+    IP_address : str
+        Instrument IP address on the local network.
+    """
+
+    def __init__(self, IP_address='192.168.1.87'):
+        rm = visa.ResourceManager()
+        resourceName = 'TCPIP0::' + IP_address + '::hislip0::INSTR'
+        self.instr = rm.open_resource(resourceName)
+        self.instr.timeout = 30000
+        alive = self.instr.query('*IDN?')
+        if alive:
+            print('RTO1024 is alive')
+            print(alive)
+        self.instr.write('SYSTem:DISPlay:UPDate ON')
+
+    def setupEyeDiagram(self, signal_channel=1, trigger_source='CH2',
+                        time_scale=2e-9, volt_scale=0.2,
+                        signal_offset=0.0, clock_offset=0.0,
+                        trigger_level=2.0, clock_volt_scale=1.0,
+                        persistence_time=10):
+        """Configure the oscilloscope to display an eye diagram.
+
+        Connect the PRBS data signal to signal_channel and the SDG6022X
+        clock output to the trigger_source channel (or EXT input).
+        Timed persistence accumulates successive bit-period waveforms
+        into an eye pattern.
+
+        Parameters
+        ----------
+        signal_channel : int
+            Channel receiving the PRBS / modulated signal.
+        trigger_source : str
+            Trigger input: 'CH1', 'CH2', 'CH3', 'CH4', or 'EXT'.
+        time_scale : float
+            Horizontal scale in seconds per division. 20 ns/div shows
+            ~2 bit periods at 100 Mbps.
+        volt_scale : float
+            Vertical scale in V/div for the signal channel.
+        trigger_level : float
+            Trigger threshold for the clock channel in V. For a 0–3.3 V
+            clock the midpoint is 1.65 V; 2.0 V gives clean rising-edge
+            triggering.
+        clock_volt_scale : float
+            Vertical scale in V/div for the clock channel. 1.0 V/div
+            shows the full 3.3 V swing with headroom.
+        persistence_time : float
+            Persistence display duration in seconds (10 s is sufficient
+            for visual accumulation).
+        """
+        ch = str(signal_channel)
+
+        # Extract trigger channel number from 'CH2' -> '2'
+        trig_ch_num = trigger_source.replace('CH', '')
+        trig_src_rto = 'CHAN' + trig_ch_num if trigger_source.startswith('CH') else trigger_source
+
+        # Signal channel
+        self.instr.write('CHANnel' + ch + ':STATe ON')
+        self.instr.write('CHANnel' + ch + ':SCALe ' + str(volt_scale))
+        self.instr.write('CHANnel' + ch + ':OFFSet ' + str(signal_offset))
+
+        # Clock / trigger channel
+        if trigger_source.startswith('CH'):
+            self.instr.write('CHANnel' + trig_ch_num + ':STATe ON')
+            self.instr.write('CHANnel' + trig_ch_num + ':SCALe ' + str(clock_volt_scale))
+            self.instr.write('CHANnel' + trig_ch_num + ':OFFSet ' + str(clock_offset))
+
+        # Timebase — position 0 centres the trigger event on screen
+        self.instr.write('TIMebase:SCALe ' + str(time_scale))
+        self.instr.write('TIMebase:POSition 0')
+
+        # Trigger — LEVel<n> is channel-specific on the RTO1024
+        self.instr.write('TRIGger:A:SOURce ' + trig_src_rto)
+        self.instr.write('TRIGger:A:LEVel' + trig_ch_num + ' ' + str(trigger_level))
+        self.instr.write('TRIGger:A:EDGE:SLOPe POSitive')
+        self.instr.write('TRIGger:A:MODE NORMal')
+
+        self.instr.write('DISPlay:PERSistence ON')
+        self.instr.write('DISPlay:PERSistence:TIME ' + str(persistence_time))
+
+        self.instr.write('RUN')
+
+    def clearPersistence(self):
+        """Clear the infinite-persistence display."""
+        self.instr.write('DISPlay:PERSistence:RESet')
+
+    def run(self):
+        self.instr.write('RUN')
+
+    def stop(self):
+        self.instr.write('STOP')
+
+    def single(self):
+        """Trigger a single acquisition and wait for completion."""
+        self.instr.write('SINGle')
+        self.instr.query('*OPC?')
+
+    def getWaveform(self, channel=1):
+        """Read waveform data from the specified channel.
+
+        Returns
+        -------
+        time_axis : np.ndarray
+            Sample times in seconds.
+        voltage : np.ndarray
+            Voltage samples in V.
+        """
+        ch = str(channel)
+        header = self.instr.query('CHANnel' + ch + ':DATA:HEADer?')
+        parts = header.strip().split(',')
+        t_start = float(parts[0])
+        t_stop = float(parts[1])
+
+        self.instr.write('FORMat REAL,32')
+        voltage = np.array(self.instr.query_binary_values('CHANnel' + ch + ':DATA?',
+                                                          datatype='f'))
+        time_axis = np.linspace(t_start, t_stop, len(voltage))
+        return time_axis, voltage
+
+    def acquireLongWaveform(self, channel=1, n_periods=10000, bit_rate=20e6,
+                            volt_scale=0.4, record_length=1_000_000):
+        """Acquire a long waveform for time-series and eye diagram analysis.
+
+        Disables the automatic record-length mode (which otherwise locks the scope
+        to screen-resolution ~2000 pts), sets record_length explicitly, then
+        restores both settings after the acquisition.
+
+        Parameters
+        ----------
+        n_periods : int
+            Number of bit periods to capture (sets the time window).
+        record_length : int
+            Number of samples to acquire. Default 1 000 000 gives ~100
+            samples/period at 20 Mbps over a 500 µs window.
+        """
+        ch = str(channel)
+        long_time_scale = n_periods / (bit_rate * 10)
+
+        # Save originals
+        orig_time_scale = self.instr.query('TIMebase:SCALe?').strip()
+        orig_auto       = self.instr.query('ACQuire:POINts:AUTomatic?').strip()
+
+        self.instr.write('DISPlay:PERSistence OFF')
+
+        # Turn off auto record-length so our explicit value is honoured
+        self.instr.write('ACQuire:POINts:AUTomatic OFF')
+        self.instr.write('ACQuire:POINts ' + str(record_length))
+        actual_pts = self.instr.query('ACQuire:POINts?').strip()
+        print(f'  Record length: requested {record_length:,}, scope accepted {actual_pts}')
+
+        self.instr.write('TIMebase:SCALe ' + str(long_time_scale))
+        self.instr.write('CHANnel' + ch + ':SCALe ' + str(volt_scale))
+        self.instr.write('SINGle')
+        self.instr.query('*OPC?')
+        t, v = self.getWaveform(channel)
+
+        # Restore
+        self.instr.write('ACQuire:POINts:AUTomatic ' + orig_auto)
+        self.instr.write('TIMebase:SCALe ' + orig_time_scale)
+        print(f'  Got {len(t):,} samples, '
+              f'{(t[-1]-t[0])*1e6:.1f} µs ({(t[-1]-t[0])*bit_rate:.0f} bit periods), '
+              f'{len(t)/((t[-1]-t[0])*bit_rate):.0f} samples/period)')
+        return t, v
+
+    def saveScreenshot(self, filepath='C:\\eye_diagram.png'):
+        """Save a PNG screenshot to the scope's own file system."""
+        self.instr.write('HCOPy:DESTination "FILE"')
+        self.instr.write('HCOPy:FORMat PNG')
+        self.instr.write('HCOPy:FILE "' + filepath + '"')
+        self.instr.write('HCOPy:IMMediate')
+        self.instr.query('*OPC?')
+
+    def saveScreenshotToPC(self, local_path):
+        """Transfer a PNG screenshot over VISA and save it on the controlling PC.
+
+        Saves to scope's internal disk first (MMEM), retrieves via MMEMory:DATA?,
+        then deletes the temp file. This is the correct approach per the RTO1024 manual
+        — DESTination "BUS" / HCOPy:DATA? does not exist on this instrument.
+        """
+        scope_tmp = 'C:\\rto_screenshot_tmp.png'
+        old_timeout = self.instr.timeout
+        self.instr.timeout = 60000
+        try:
+            self.instr.write("HCOPy:DESTination 'MMEM'")
+            self.instr.write("HCOPy:DEVice:LANGuage PNG")
+            self.instr.write("MMEMory:NAME '" + scope_tmp + "'")
+            self.instr.write('HCOPy:IMMediate')
+            self.instr.query('*OPC?')
+            raw = self.instr.query_binary_values(
+                "MMEMory:DATA? '" + scope_tmp + "'",
+                datatype='B', container=bytes)
+        finally:
+            self.instr.timeout = old_timeout
+        try:
+            self.instr.write("MMEMory:DELete '" + scope_tmp + "'")
+        except Exception:
+            pass
+        with open(local_path, 'wb') as f:
+            f.write(raw)
+
+    def closeConnection(self):
+        self.instr.close()

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import subprocess; r = subprocess.run\\(['ping', '-n', '2', '192.168.1.31'], capture_output=True, text=True\\); print\\(r.stdout\\)\")",
+      "Bash(python *)",
+      "WebFetch(domain:www.rohde-schwarz.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(pdftotext -layout \"C:\\\\Users\\\\shd-photonics-inp\\\\Downloads\\\\RTO_UserManual_en_11.pdf\" -)",
+      "WebFetch(domain:download.tek.com)",
+      "WebFetch(domain:www.manualslib.com)",
+      "WebFetch(domain:www.cedesa.com.mx)",
+      "WebFetch(domain:pymeasure.readthedocs.io)",
+      "WebFetch(domain:xdevs.com)",
+      "WebFetch(domain:www.calplus.de)",
+      "WebFetch(domain:docs.ampnuts.ru)"
+    ]
+  }
+}
