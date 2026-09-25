@@ -53,23 +53,25 @@ OSC_CLOCK_CH     = 3           # CH3 — clock / trigger
 OSC_TRIGGER_SRC  = 'CH3'
 # 2 bit periods across 10 divisions → TIME_SCALE = 2/(BIT_RATE*10) = 1/(BIT_RATE*5)
 TIME_SCALE       = 1 / (BIT_RATE * 5)   # [s/div]
-VOLT_SCALE       = 0.4         # [V/div] — CH1 reference signal
-SIGNAL_OFFSET    = 1.5         # [V] — CH1 display centre
-CHIP_VOLT_SCALE  = 0.4         # [V/div] — CH2 through-chip signal
-CHIP_OFFSET      = 1.6         # [V] — CH2 display centre
+VOLT_SCALE       = 0.2         # [V/div] — CH1 reference signal
+SIGNAL_OFFSET    = 0.67         # [V] — CH1 display centre
+CHIP_VOLT_SCALE  = 0.002         # [V/div] — CH2 through-chip signal
+CHIP_OFFSET      = 0.0         # [V] — CH2 display centre
 CLOCK_VOLT_SCALE = 0.5         # [V/div] — CH3 clock
 CLOCK_OFFSET     = 0.0         # [V] — CH3 display centre
 TRIGGER_LEVEL    = 1.65         # [V] — rising edge of 0–3.3 V clock
 OSC_BW_LIMIT     = 200e6       # [Hz] per-channel bandwidth limit; None = full bandwidth
 
-N_UI            = 1_000_000    # unit intervals to accumulate
-RECORD_LENGTH   = 5_000_000    # waveform samples (scope caps at its hw limit and reports actual)
-EYE_BINS        = (500, 1500)  # (time bins, voltage bins) for persistence histogram
+N_UI            = 1_000_000    # unit intervals for oscilloscope persistence display
+N_PERIODS       = 10_000       # bit periods to acquire for software eye diagram
+RECORD_LENGTH   = 5_000_000    # requested waveform samples (scope caps at hw limit)
+EYE_BINS_V      = 1500         # voltage bins (fixed; ~2.6 mV/bin at 0.4 V/div × 10 div)
 EYE_SMOOTH      = 0            # Gaussian sigma (bins) to fill gaps between samples; 0 = off
+# Time bins are computed after acquisition: actual_samples // N_PERIODS → ~2 samples/bin
 
 PM_SERIAL         = 'P0024530'
 SAVE_FOLDER       = r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Eye_diagram\Eye_diagram_data'
-DEFAULT_SAVE_LABEL = 'Eye_diagram_1550nm_ref(ch2)+chip(ch1)'
+DEFAULT_SAVE_LABEL = 'Eye_diagram_1550nm_ref(ch1)+775nm_chip(ch2)'
 
 # =============================================================================
 # Measurement
@@ -194,42 +196,21 @@ try:
     osc.stop()
     print('Acquiring long waveform …')
     t, v, extra = osc.acquireLongWaveform(channel=OSC_SIGNAL_CH,
-                                          n_periods=10000,
+                                          n_periods=N_PERIODS,
                                           bit_rate=BIT_RATE,
                                           volt_scale=VOLT_SCALE,
                                           record_length=RECORD_LENGTH,
                                           extra_channels=[OSC_CHIP_CH])
     t_chip, v_chip = extra[OSC_CHIP_CH]
     bit_period = 1.0 / BIT_RATE
+    _eye_bins_t = len(v) // N_PERIODS   # ~2 samples/bin, adapts to any bit rate/sample rate
+    EYE_BINS    = (_eye_bins_t, EYE_BINS_V)
+    print(f'Eye bins: {EYE_BINS[0]} time ({2/BIT_RATE*1e9/EYE_BINS[0]*1e3:.2f} ps/bin), '
+          f'{EYE_BINS[1]} voltage')
     print(f'CH{OSC_SIGNAL_CH} (ref):  {len(v):,} pts, '
           f'V=[{v.min():.3f}, {v.max():.3f}] V, mean={v.mean():.3f} V')
     print(f'CH{OSC_CHIP_CH} (chip): {len(v_chip):,} pts, '
           f'V=[{v_chip.min():.3f}, {v_chip.max():.3f}] V, mean={v_chip.mean():.3f} V')
-
-    # Eye metrics
-    m_ref  = _compute_eye_metrics(t,      v,      f'CH{OSC_SIGNAL_CH} reference')
-    m_chip = _compute_eye_metrics(t_chip, v_chip, f'CH{OSC_CHIP_CH} through-chip')
-    _print_metrics(m_ref)
-    _print_metrics(m_chip)
-
-
-    # Raw waveform plot
-    fig_raw, ax_raw = plt.subplots(figsize=(10, 4))
-    ax_raw.plot((t - t[0]) * 1e6, v, lw=0.3, color='C0',
-                label=f'CH{OSC_SIGNAL_CH} reference')
-    ax_raw.plot((t_chip - t_chip[0]) * 1e6, v_chip, lw=0.3, color='C1',
-                label=f'CH{OSC_CHIP_CH} through-chip')
-    ax_raw.set_xlabel('Time [µs]')
-    ax_raw.set_ylabel('Voltage [V]')
-    ax_raw.set_title(f'Raw waveform — {BIT_RATE/1e6:.0f} Mbps {SEQUENCE}')
-    ax_raw.legend(loc='upper right')
-    ax_raw.grid(True, alpha=0.3)
-    fig_raw.tight_layout()
-    for ext in ('pdf', 'svg'):
-        fig_raw.savefig(os.path.join(_run_folder, f'{_base_name}_raw.{ext}'),
-                        bbox_inches='tight')
-    print('Raw waveform saved.')
-    plt.show()
 
     # =========================================================================
     # Eye diagram helpers
@@ -381,6 +362,30 @@ try:
         print(f"    Jitter p-p  = {m['jitter_pp_ps']:.2f} ps  "
               f"({m['jitter_pp_ps']*1e-12/bit_period:.4f} UI)")
         print(f"    N rising crossings = {m['n_crossings']}")
+
+    # Eye metrics
+    m_ref  = _compute_eye_metrics(t,      v,      f'CH{OSC_SIGNAL_CH} reference')
+    m_chip = _compute_eye_metrics(t_chip, v_chip, f'CH{OSC_CHIP_CH} through-chip')
+    _print_metrics(m_ref)
+    _print_metrics(m_chip)
+
+    # Raw waveform plot
+    fig_raw, ax_raw = plt.subplots(figsize=(10, 4))
+    ax_raw.plot((t - t[0]) * 1e6, v, lw=0.3, color='C0',
+                label=f'CH{OSC_SIGNAL_CH} reference')
+    ax_raw.plot((t_chip - t_chip[0]) * 1e6, v_chip, lw=0.3, color='C1',
+                label=f'CH{OSC_CHIP_CH} through-chip')
+    ax_raw.set_xlabel('Time [µs]')
+    ax_raw.set_ylabel('Voltage [V]')
+    ax_raw.set_title(f'Raw waveform — {BIT_RATE/1e6:.0f} Mbps {SEQUENCE}')
+    ax_raw.legend(loc='upper right')
+    ax_raw.grid(True, alpha=0.3)
+    fig_raw.tight_layout()
+    for ext in ('pdf', 'svg'):
+        fig_raw.savefig(os.path.join(_run_folder, f'{_base_name}_raw.{ext}'),
+                        bbox_inches='tight')
+    print('Raw waveform saved.')
+    plt.show()
 
     # =========================================================================
     # Eye diagram plots

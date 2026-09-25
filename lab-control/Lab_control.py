@@ -16,6 +16,7 @@ from TLPM import TLPM
 from tkinter import Tk, filedialog
 import sys
 import socket
+import struct
 #import System
 import clr   # COMMON LANGUAGE RUNTIME, part of pythonnet package, do not confuse with "clr" package
 from ctypes import (cdll,
@@ -989,6 +990,88 @@ class AFG_Siglent:
 # Siglent DC Supply SPD3003X
 # =============================================================================
 
+def _spd3303x_vxi11_write(ip_address, command):
+    """Send a write-only SCPI command to an SPD3303X via raw VXI11 RPC.
+
+    OUTPut ON/OFF is silently ignored over the raw SCPI socket (port 5025)
+    but works over VXI11.  Two firmware quirks are handled:
+    - device_write response reports len(cmd)-1 bytes written; accepted as long
+      as the VXI11 error code is 0.
+    - Querying over VXI11 corrupts the socket (device sends the SCPI response
+      before a device_read is issued); we therefore never issue reads here.
+    """
+    VXI11_PROG = 0x607AF
+
+    def _build_record(xid, prog, vers, proc, body):
+        hdr  = struct.pack('>IIIIII', xid, 0, 2, prog, vers, proc)
+        cred = struct.pack('>IIII',   0, 0, 0, 0)   # AUTH_NULL credentials + verifier
+        payload = hdr + cred + body
+        return struct.pack('>I', 0x80000000 | len(payload)) + payload
+
+    def _recv_record(sock):
+        mark = sock.recv(4)
+        if len(mark) < 4:
+            return b''
+        length = struct.unpack('>I', mark)[0] & 0x7FFFFFFF
+        data = b''
+        while len(data) < length:
+            chunk = sock.recv(length - len(data))
+            if not chunk:
+                break
+            data += chunk
+        return data
+
+    # Step 1: ask portmapper (port 111) which port VXI11 core is on
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as pm:
+        pm.settimeout(3.0)
+        pm.connect((ip_address, 111))
+        body = struct.pack('>IIII', VXI11_PROG, 1, 6, 0)    # prog, ver, TCP, port
+        pm.sendall(_build_record(1, 0x186A0, 2, 3, body))   # portmapper GETPORT
+        resp = _recv_record(pm)
+    vxi11_port = struct.unpack('>I', resp[-4:])[0]
+    if vxi11_port == 0:
+        raise RuntimeError('SPD3303X: VXI11 not registered on portmapper — power-cycle the device')
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(5.0)
+        s.connect((ip_address, vxi11_port))
+
+        # Step 2: create_link
+        dev  = b'inst0'
+        body = struct.pack('>III', 0x5D3303, 0, 10000)          # client_id, no_lock, lock_timeout
+        body += struct.pack('>I', len(dev)) + dev + b'\x00' * ((-len(dev)) % 4)
+        s.sendall(_build_record(2, VXI11_PROG, 1, 10, body))
+        resp = _recv_record(s)
+        # RPC reply header is 24 bytes; VXI11 result starts at byte 24
+        if len(resp) < 28:
+            raise RuntimeError(f'SPD3303X VXI11: create_link short response ({len(resp)} B) — '
+                               'power-cycle the device to reset stale link state')
+        vxi11_err = struct.unpack('>I', resp[24:28])[0]
+        if vxi11_err != 0:
+            raise RuntimeError(f'SPD3303X VXI11: create_link error {vxi11_err} — '
+                               'power-cycle the device to reset stale link state')
+        lid = struct.unpack('>I', resp[28:32])[0]
+
+        # Step 3: device_write — send command, read acknowledgment
+        # Never issue device_read: device sends SCPI response immediately,
+        # which would corrupt the RPC stream if we tried to read it later.
+        data = command.encode() + b'\n'
+        body = struct.pack('>IIII', lid, 5000, 10000, 8)        # lid, io_timeout, lock_timeout, flags=END
+        body += struct.pack('>I', len(data)) + data + b'\x00' * ((-len(data)) % 4)
+        s.sendall(_build_record(3, VXI11_PROG, 1, 11, body))
+        resp = _recv_record(s)
+        if len(resp) >= 28:
+            vxi11_err = struct.unpack('>I', resp[24:28])[0]
+            if vxi11_err != 0:
+                raise RuntimeError(f'SPD3303X VXI11: device_write error {vxi11_err} for {command!r}')
+        # size field (resp[28:32]) is intentionally not checked:
+        # SPD3303X firmware reports len(cmd)-1 bytes written (off-by-one bug)
+
+        # Step 4: destroy_link so the device doesn't accumulate stale links
+        s.sendall(_build_record(4, VXI11_PROG, 1, 23, struct.pack('>I', lid)))
+        _recv_record(s)
+
+
 class DC_Siglent: #Developer: Jeppe Surrow
         def __init__(self,
                      channel=1,
@@ -998,18 +1081,19 @@ class DC_Siglent: #Developer: Jeppe Surrow
             self.current = current
             self.channel = channel
             self.max_voltage = max_voltage
+            self.ip_address = IP_address
 
             if voltage > self.max_voltage:
                 raise ValueError(
                     f'Requested voltage {voltage} V exceeds max_voltage '
                     f'{self.max_voltage} V. Refusing to set output.')
             self.voltage = voltage
-            
+
             rm = visa.ResourceManager()
             if TCP:
-                # Must use VXI11 (::INSTR), not raw socket (::5025::SOCKET).
-                # Output ON/OFF commands are silently ignored over the raw socket.
-                resourceName = 'TCPIP0::' + IP_address + '::INSTR'
+                # Raw SCPI socket for queries/sets; OUTPut ON/OFF goes through
+                # _spd3303x_vxi11_write() because it is silently ignored here.
+                resourceName = 'TCPIP0::' + IP_address + '::5025::SOCKET'
             else:
                 resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
 
@@ -1028,21 +1112,12 @@ class DC_Siglent: #Developer: Jeppe Surrow
             self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
             time.sleep(0.1)
 
-            self.instr.write('OUTPut CH' + str(channel) + ',ON')
+            self.outputStatus(channel=channel, status='ON')
             time.sleep(0.5)
 
             if alive:
                 print('DC_SIGLENT is alive')
                 print(str(alive))
-            
-            '''
-            self.IsOn = self.instr.read('\n')
-            if self.IsOn == 1:
-                print('Source output is ON')
-            else: 
-              if self.IsOn == 0: 
-                    print('Source output is OFF')
-            '''
 
 
         def setParameters(self,
@@ -1059,12 +1134,13 @@ class DC_Siglent: #Developer: Jeppe Surrow
             time.sleep(0.1)
             self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
             time.sleep(0.1)
-    
-        
+
+
         def outputStatus(self, channel=1, status='ON'):
-            self.instr.write('OUTPut CH' + str(channel) + ',' + str(status))
-    
-        
+            # OUTPut ON/OFF is silently ignored over the raw socket — must go via VXI11
+            _spd3303x_vxi11_write(self.ip_address, f'OUTPut CH{channel},{status}')
+
+
         def closeConnection(self):
             self.instr.close()
         
