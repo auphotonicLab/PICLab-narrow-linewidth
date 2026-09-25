@@ -7,13 +7,7 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(pdftotext -layout \"C:\\\\Users\\\\shd-photonics-inp\\\\Downloads\\\\RTO_UserManual_en_11.pdf\" -)",
-      "WebFetch(domain:download.tek.com)",
-      "WebFetch(domain:www.manualslib.com)",
-      "WebFetch(domain:www.cedesa.com.mx)",
-      "WebFetch(domain:pymeasure.readthedocs.io)",
-      "WebFetch(domain:xdevs.com)",
-      "WebFetch(domain:www.calplus.de)",
-      "WebFetch(domain:docs.ampnuts.ru)"
+      "Bash(pdftotext \"/c/Users/shd-photonics-inp/Downloads/RTO_UserManual_en_11.pdf\" -)"
     ]
   }
 }

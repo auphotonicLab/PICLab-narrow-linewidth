@@ -1007,7 +1007,9 @@ class DC_Siglent: #Developer: Jeppe Surrow
             
             rm = visa.ResourceManager()
             if TCP:
-                resourceName = 'TCPIP0::' + IP_address + '::5025::SOCKET'
+                # Must use VXI11 (::INSTR), not raw socket (::5025::SOCKET).
+                # Output ON/OFF commands are silently ignored over the raw socket.
+                resourceName = 'TCPIP0::' + IP_address + '::INSTR'
             else:
                 resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
 
@@ -1026,7 +1028,7 @@ class DC_Siglent: #Developer: Jeppe Surrow
             self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
             time.sleep(0.1)
 
-            self.instr.write('OUTP CH' + str(channel) + ',ON')
+            self.instr.write('OUTPut CH' + str(channel) + ',ON')
             time.sleep(0.5)
 
             if alive:
@@ -1053,13 +1055,14 @@ class DC_Siglent: #Developer: Jeppe Surrow
                     f'Requested voltage {voltage} V exceeds max_voltage '
                     f'{self.max_voltage} V. Refusing to set output.')
 
-            self.instr.write('CH' + str(channel) + ':CURR ' + str(current)) #
-            time.sleep(0.1) #Wait
-            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))  #
+            self.instr.write('CH' + str(channel) + ':CURR ' + str(current))
+            time.sleep(0.1)
+            self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
+            time.sleep(0.1)
     
         
-        def outputStatus(self,channel=1,status='ON'):
-            self.instr.write('OUTP ' + 'CH' + str(channel) + ',' + str(status))
+        def outputStatus(self, channel=1, status='ON'):
+            self.instr.write('OUTPut CH' + str(channel) + ',' + str(status))
     
         
         def closeConnection(self):
@@ -2149,11 +2152,11 @@ class RTO1024:
         self.instr.write('TIMebase:SCALe ' + str(time_scale))
         self.instr.write('TIMebase:POSition 0')
 
-        # Trigger — LEVel<n> is channel-specific on the RTO1024
-        self.instr.write('TRIGger:A:SOURce ' + trig_src_rto)
-        self.instr.write('TRIGger:A:LEVel' + trig_ch_num + ' ' + str(trigger_level))
-        self.instr.write('TRIGger:A:EDGE:SLOPe POSitive')
-        self.instr.write('TRIGger:A:MODE NORMal')
+        # Trigger — this scope uses TRIGger1:* (TRIGger:A:* times out on RTO firmware 3.70)
+        self.instr.write('TRIGger1:SOURce ' + trig_src_rto)
+        self.instr.write('TRIGger1:LEVel' + trig_ch_num + ' ' + str(trigger_level))
+        self.instr.write('TRIGger1:EDGE:SLOPe POSitive')
+        self.instr.write('TRIGger1:MODE NORMal')
 
         self.instr.write('DISPlay:PERSistence ON')
         self.instr.write('DISPlay:PERSistence:TIME ' + str(persistence_time))
@@ -2186,6 +2189,10 @@ class RTO1024:
             Voltage samples in V.
         """
         ch = str(channel)
+        # Ensure single-channel export so CHANnel<n>:DATA? returns only this channel.
+        # When MULTichannel is ON the scope returns all active channels interleaved.
+        self.instr.write('EXPort:WAVeform:MULTichannel OFF')
+
         header = self.instr.query('CHANnel' + ch + ':DATA:HEADer?')
         parts = header.strip().split(',')
         t_start = float(parts[0])
@@ -2198,7 +2205,8 @@ class RTO1024:
         return time_axis, voltage
 
     def acquireLongWaveform(self, channel=1, n_periods=10000, bit_rate=20e6,
-                            volt_scale=0.4, record_length=1_000_000):
+                            volt_scale=0.4, record_length=1_000_000,
+                            extra_channels=None):
         """Acquire a long waveform for time-series and eye diagram analysis.
 
         Disables the automatic record-length mode (which otherwise locks the scope
@@ -2212,34 +2220,47 @@ class RTO1024:
         record_length : int
             Number of samples to acquire. Default 1 000 000 gives ~100
             samples/period at 20 Mbps over a 500 µs window.
+        extra_channels : list of int, optional
+            Additional channel numbers to read from the same acquisition.
+            Returns a dict {ch: (t, v)} as a third return value when provided.
         """
         ch = str(channel)
         long_time_scale = n_periods / (bit_rate * 10)
 
         # Save originals
         orig_time_scale = self.instr.query('TIMebase:SCALe?').strip()
-        orig_auto       = self.instr.query('ACQuire:POINts:AUTomatic?').strip()
+        orig_auto       = self.instr.query('ACQuire:POINts:AUTO?').strip()
 
         self.instr.write('DISPlay:PERSistence OFF')
 
-        # Turn off auto record-length so our explicit value is honoured
-        self.instr.write('ACQuire:POINts:AUTomatic OFF')
+        # Time scale MUST be set before ACQuire:POINts — the scope rejects a record
+        # length that would require a sample rate above its hardware maximum at the
+        # current time scale and silently keeps the old value.
+        self.instr.write('TIMebase:SCALe ' + str(long_time_scale))
         self.instr.write('ACQuire:POINts ' + str(record_length))
         actual_pts = self.instr.query('ACQuire:POINts?').strip()
         print(f'  Record length: requested {record_length:,}, scope accepted {actual_pts}')
 
-        self.instr.write('TIMebase:SCALe ' + str(long_time_scale))
         self.instr.write('CHANnel' + ch + ':SCALe ' + str(volt_scale))
         self.instr.write('SINGle')
         self.instr.query('*OPC?')
         t, v = self.getWaveform(channel)
 
+        extra = {}
+        if extra_channels:
+            for ch_extra in extra_channels:
+                t_e, v_e = self.getWaveform(ch_extra)
+                extra[ch_extra] = (t_e, v_e)
+
         # Restore
-        self.instr.write('ACQuire:POINts:AUTomatic ' + orig_auto)
+        self.instr.write('ACQuire:POINts:AUTO ' + orig_auto)
         self.instr.write('TIMebase:SCALe ' + orig_time_scale)
         print(f'  Got {len(t):,} samples, '
               f'{(t[-1]-t[0])*1e6:.1f} µs ({(t[-1]-t[0])*bit_rate:.0f} bit periods), '
-              f'{len(t)/((t[-1]-t[0])*bit_rate):.0f} samples/period)')
+              f'{len(t)/((t[-1]-t[0])*bit_rate):.0f} samples/period')
+
+        if extra_channels:
+            return t, v, extra
         return t, v
 
     def saveScreenshot(self, filepath='C:\\eye_diagram.png'):
