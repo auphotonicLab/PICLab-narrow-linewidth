@@ -2274,15 +2274,137 @@ class RTO1024:
         t_start = float(parts[0])
         t_stop = float(parts[1])
 
+        # REAL,32 carries the full HD 16-bit word as well (24-bit mantissa)
         self.instr.write('FORMat REAL,32')
         voltage = np.array(self.instr.query_binary_values('CHANnel' + ch + ':DATA?',
                                                           datatype='f'))
-        time_axis = np.linspace(t_start, t_stop, len(voltage))
+        # Header gives the acquisition window [start, stop); the sample interval
+        # is (stop - start)/N. np.linspace(start, stop, N) would stretch it by N/(N-1).
+        dt = (t_stop - t_start) / len(voltage)
+        time_axis = t_start + np.arange(len(voltage)) * dt
         return time_axis, voltage
 
+    # ------------------------------------------------------------------
+    # Resolution helpers (vertical ADC levels, HD mode, sample rate)
+    # ------------------------------------------------------------------
+
+    def _query_or(self, cmd, default=None, timeout_ms=3000):
+        """Query with a short timeout; return default if unsupported."""
+        old = self.instr.timeout
+        self.instr.timeout = timeout_ms
+        try:
+            return self.instr.query(cmd).strip()
+        except Exception:
+            try:
+                self.instr.clear()
+            except Exception:
+                pass
+            return default
+        finally:
+            self.instr.timeout = old
+
+    def getOptions(self):
+        """Installed options (*OPT?) as a list of strings, e.g. ['K17', 'B200']."""
+        resp = self._query_or('*OPT?', '') or ''
+        return [o.strip().strip('"') for o in resp.split(',')
+                if o.strip().strip('"') not in ('', '0')]
+
+    def hasHighDefinition(self):
+        """True if option R&S RTO-K17 (High Definition mode) is installed."""
+        return any(o.upper().endswith('K17') for o in self.getOptions())
+
+    def setHighDefinition(self, state=True, bandwidth=None):
+        """Enable/disable High Definition mode (option K17).
+
+        HD applies a digital low-pass filter after the 8-bit ADC and gives up
+        to 16-bit resolution (lower bandwidth -> more bits). In HD mode the
+        sample rate is halved and the per-channel BANDwidth setting is
+        replaced by the HD filter bandwidth (max 1 GHz for >= 1 GHz models).
+
+        Returns
+        -------
+        (enabled : bool, eff_bits : float)
+            eff_bits is HDEFinition:RESolution? when enabled, else 8.0.
+        """
+        if state and not self.hasHighDefinition():
+            print('  HD mode requested but option K17 is not installed — using 8-bit.')
+            state = False
+        if state:
+            self.instr.write('HDEFinition:STATe ON')
+            if bandwidth:
+                self.instr.write(f'HDEFinition:BWIDth {float(bandwidth):.0f}')
+        elif self.hasHighDefinition():
+            self.instr.write('HDEFinition:STATe OFF')
+        self.instr.query('*OPC?')
+        on = self._query_or('HDEFinition:STATe?', '0') in ('1', 'ON')
+        bits = 8.0
+        if on:
+            try:
+                bits = float(self._query_or('HDEFinition:RESolution?', 'nan'))
+            except ValueError:
+                bits = float('nan')
+            bw = self._query_or('HDEFinition:BWIDth?', '?')
+            print(f'  HD mode ON: filter bandwidth {bw} Hz, resolution {bits} bit')
+        else:
+            print('  HD mode OFF: 8-bit ADC resolution')
+        return on, bits
+
+    def getHighDefinition(self):
+        """Current (enabled, eff_bits, bandwidth_Hz) without changing anything."""
+        if not self.hasHighDefinition():
+            return False, 8.0, None
+        on = self._query_or('HDEFinition:STATe?', '0') in ('1', 'ON')
+        if not on:
+            return False, 8.0, None
+        try:
+            bits = float(self._query_or('HDEFinition:RESolution?', 'nan'))
+            bw = float(self._query_or('HDEFinition:BWIDth?', 'nan'))
+        except ValueError:
+            bits, bw = float('nan'), None
+        return True, bits, bw
+
+    def getVerticalInfo(self, channel, hd_state=None):
+        """Vertical settings and resulting ADC level spacing for a channel.
+
+        From the RTO manual (raw data conversion, p. 462):
+            step = VerticalScale * 10 div / 253           (8 bit)
+            step = VerticalScale * 10 div / (253 * 256)   (HD, 16-bit words)
+        The effective HD resolution (fewer bits than the word) is
+        HDEFinition:RESolution?. The ADC range is offset ± 5 div.
+        """
+        ch = str(channel)
+        scale = float(self.instr.query(f'CHANnel{ch}:SCALe?'))
+        offset = float(self.instr.query(f'CHANnel{ch}:OFFSet?'))
+        pos = self._query_or(f'CHANnel{ch}:POSition?', 'nan')
+        hd, bits, _ = hd_state if hd_state else self.getHighDefinition()
+        step8 = scale * 10 / 253
+        return dict(channel=int(channel),
+                    volt_scale_V_per_div=scale,
+                    offset_V=offset,
+                    position_div=float(pos),
+                    hd_mode=hd,
+                    adc_bits_effective=bits,
+                    adc_word_step_V=step8 / 256 if hd else step8,
+                    adc_range_min_V=offset - 5 * scale,
+                    adc_range_max_V=offset + 5 * scale)
+
+    def getMaxRealSampleRate(self, hd=None):
+        """Highest real-time (non-interpolated) sample rate [Sa/s].
+
+        ADC rate from ACQuire:POINts:ARATe? (10 GSa/s on the RTO1024),
+        halved in HD mode.
+        """
+        try:
+            adc = float(self._query_or('ACQuire:POINts:ARATe?', '10e9'))
+        except ValueError:
+            adc = 10e9
+        if hd is None:
+            hd = self.getHighDefinition()[0]
+        return adc / 2 if hd else adc
+
     def acquireLongWaveform(self, channel=1, n_periods=10000, bit_rate=20e6,
-                            volt_scale=0.4, record_length=1_000_000,
-                            extra_channels=None):
+                            volt_scale=0.4, record_length=None,
+                            extra_channels=None, real_time=True):
         """Acquire a long waveform for time-series and eye diagram analysis.
 
         Disables the automatic record-length mode (which otherwise locks the scope
@@ -2293,21 +2415,43 @@ class RTO1024:
         ----------
         n_periods : int
             Number of bit periods to capture (sets the time window).
-        record_length : int
-            Number of samples to acquire. Default 1 000 000 gives ~100
-            samples/period at 20 Mbps over a 500 µs window.
+        record_length : int or None
+            Number of samples to acquire. None (default) = the maximum
+            real-time sample rate over the window (10 GSa/s, or 5 GSa/s in
+            HD mode). Larger values are capped to that, so no interpolated
+            points are recorded.
         extra_channels : list of int, optional
             Additional channel numbers to read from the same acquisition.
             Returns a dict {ch: (t, v)} as a third return value when provided.
+        real_time : bool
+            Use ACQuire:MODE RTIMe (only real ADC samples, no interpolation)
+            during the acquisition; the previous mode is restored afterwards.
+
+        After the call, self.last_acquisition holds sample interval, sample
+        rate, HD state and per-channel vertical info (see getVerticalInfo).
         """
         ch = str(channel)
         long_time_scale = n_periods / (bit_rate * 10)
+        window = 10 * long_time_scale
 
         # Save originals
         orig_time_scale = self.instr.query('TIMebase:SCALe?').strip()
         orig_auto       = self.instr.query('ACQuire:POINts:AUTO?').strip()
+        orig_mode       = self._query_or('ACQuire:MODE?')
 
         self.instr.write('DISPlay:PERSistence OFF')
+        if real_time:
+            self.instr.write('ACQuire:MODE RTIMe')
+
+        hd_state = self.getHighDefinition()
+        max_rate = self.getMaxRealSampleRate(hd=hd_state[0])
+        max_pts = int(round(window * max_rate))
+        max_pts -= max_pts % 2                      # increment is 2
+        if record_length is None or record_length > max_pts:
+            if record_length is not None:
+                print(f'  Record length {record_length:,} exceeds the real-time maximum '
+                      f'({max_rate/1e9:.3g} GSa/s × {window*1e6:.1f} µs) — using {max_pts:,}.')
+            record_length = max_pts
 
         # Time scale MUST be set before ACQuire:POINts — the scope rejects a record
         # length that would require a sample rate above its hardware maximum at the
@@ -2315,7 +2459,9 @@ class RTO1024:
         self.instr.write('TIMebase:SCALe ' + str(long_time_scale))
         self.instr.write('ACQuire:POINts ' + str(record_length))
         actual_pts = self.instr.query('ACQuire:POINts?').strip()
-        print(f'  Record length: requested {record_length:,}, scope accepted {actual_pts}')
+        res = self._query_or('ACQuire:RESolution?')
+        print(f'  Record length: requested {record_length:,}, scope accepted {actual_pts}'
+              + (f', sample interval {float(res)*1e12:.1f} ps' if res else ''))
 
         self.instr.write('CHANnel' + ch + ':SCALe ' + str(volt_scale))
         self.instr.write('SINGle')
@@ -2328,9 +2474,25 @@ class RTO1024:
                 t_e, v_e = self.getWaveform(ch_extra)
                 extra[ch_extra] = (t_e, v_e)
 
+        # Record what the data actually is (read before restoring settings)
+        hd, bits, hd_bw = hd_state
+        dt = float(t[1] - t[0]) if len(t) > 1 else float('nan')
+        vinfo = {int(c): self.getVerticalInfo(c, hd_state=hd_state)
+                 for c in [channel] + list(extra_channels or [])}
+        self.last_acquisition = dict(
+            sample_interval_s=dt,
+            sample_rate_Sa_s=1.0 / dt if dt else float('nan'),
+            max_real_sample_rate_Sa_s=max_rate,
+            acquire_mode='RTIMe' if real_time else orig_mode,
+            record_length=len(t),
+            hd_mode=hd, hd_resolution_bits=bits, hd_bandwidth_Hz=hd_bw,
+            vertical=vinfo)
+
         # Restore
         self.instr.write('ACQuire:POINts:AUTO ' + orig_auto)
         self.instr.write('TIMebase:SCALe ' + orig_time_scale)
+        if real_time and orig_mode:
+            self.instr.write('ACQuire:MODE ' + orig_mode)
         print(f'  Got {len(t):,} samples, '
               f'{(t[-1]-t[0])*1e6:.1f} µs ({(t[-1]-t[0])*bit_rate:.0f} bit periods), '
               f'{len(t)/((t[-1]-t[0])*bit_rate):.0f} samples/period')
