@@ -67,9 +67,6 @@ CLOCK_OFFSET     = 0.0         # [V] — CH3 display centre
 TRIGGER_LEVEL    = 1.65         # [V] — rising edge of 0–3.3 V clock
 OSC_BW_LIMIT     = 200e6       # [Hz] per-channel bandwidth limit; None = full bandwidth
 
-USE_HD          = 'auto'       # 'auto': use High Definition if option K17 is installed; False: never
-HD_BANDWIDTH    = OSC_BW_LIMIT or 1e9  # [Hz] HD filter bandwidth (lower → more bits; max 1 GHz)
-
 N_UI            = 1_000_000    # unit intervals for oscilloscope persistence display
 N_PERIODS       = 10_000       # bit periods to acquire for software eye diagram
 RECORD_LENGTH   = None         # None = max real-time rate (10 GSa/s, 5 GSa/s in HD) over N_PERIODS
@@ -155,11 +152,9 @@ try:
     afg.output_status(channel=AFG_DATA_CH,  status='ON')
     time.sleep(0.5)
 
-    # Step 5 — Scope resolution: High Definition if available
-    hd_on, hd_bits = osc.setHighDefinition(
-        state=(USE_HD == 'auto' or USE_HD is True), bandwidth=HD_BANDWIDTH)
+    hd_on, hd_bits = False, 8.0   # K17 (High Definition) not installed on this scope
 
-    # Step 6 — Scope eye diagram
+    # Step 5 — Scope eye diagram
     osc.setupEyeDiagram(signal_channel=OSC_SIGNAL_CH,
                         trigger_source=OSC_TRIGGER_SRC,
                         time_scale=TIME_SCALE,
@@ -172,8 +167,7 @@ try:
     osc.instr.write(f'CHANnel{OSC_CHIP_CH}:SCALe {CHIP_VOLT_SCALE}')
     osc.instr.write(f'CHANnel{OSC_CHIP_CH}:OFFSet {CHIP_OFFSET}')
 
-    # Bandwidth limit (in HD mode the HD filter sets the bandwidth instead)
-    if OSC_BW_LIMIT and not hd_on:
+    if OSC_BW_LIMIT:
         _bw_str = f'{OSC_BW_LIMIT:.0f}'
         for _ch in [OSC_SIGNAL_CH, OSC_CHIP_CH, OSC_CLOCK_CH]:
             osc.instr.write(f'CHANnel{_ch}:BANDwidth {_bw_str}')

@@ -4,12 +4,12 @@ SPD3303X output-enable diagnostic.
 Tries various command forms and reads SYST:STATUS? after each attempt.
 
 SYST:STATUS? returns a hex string, e.g. "0x24".  Bit meanings (from manual):
-  Bit 0 : CH1 output ON
-  Bit 1 : CH2 output ON
-  Bit 2 : tracking (0 = independent, 1 = series, 2 = parallel encoded in bits 2-3)
-  Bit 4 : beep
-  Bit 6 : baud
-  Bit 7 : OTP
+  Bit 0-1 : tracking mode (0 = independent, 1 = series, 2 = parallel)
+  Bit 4 : CH1 output ON
+  Bit 5 : CH2 output ON
+  Bit 6 : beep
+  Bit 7 : baud
+  Bit 8 : OTP
 
 Run this with the DC supply powered on and cables disconnected.
 """

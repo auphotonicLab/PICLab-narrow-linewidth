@@ -990,11 +990,13 @@ class AFG_Siglent:
 # Siglent DC Supply SPD3003X
 # =============================================================================
 
+
 def _spd3303x_vxi11_write(ip_address, command):
     """Send a write-only SCPI command to an SPD3303X via raw VXI11 RPC.
 
     OUTPut ON/OFF is silently ignored over the raw SCPI socket (port 5025)
-    but works over VXI11.  Two firmware quirks are handled:
+    even with correct syntax and inter-command delays (confirmed on firmware
+    1.01.01.02.05).  VXI11 is required.  Two firmware quirks are handled:
     - device_write response reports len(cmd)-1 bytes written; accepted as long
       as the VXI11 error code is 0.
     - Querying over VXI11 corrupts the socket (device sends the SCPI response
@@ -1082,6 +1084,7 @@ class DC_Siglent: #Developer: Jeppe Surrow
             self.channel = channel
             self.max_voltage = max_voltage
             self.ip_address = IP_address
+            self.TCP = TCP
 
             if voltage > self.max_voltage:
                 raise ValueError(
@@ -1091,8 +1094,6 @@ class DC_Siglent: #Developer: Jeppe Surrow
 
             rm = visa.ResourceManager()
             if TCP:
-                # Raw SCPI socket for queries/sets; OUTPut ON/OFF goes through
-                # _spd3303x_vxi11_write() because it is silently ignored here.
                 resourceName = 'TCPIP0::' + IP_address + '::5025::SOCKET'
             else:
                 resourceName = 'USB0::0x0483::0x7540::SPD3XHCQ3R2187::INSTR'
@@ -1111,9 +1112,6 @@ class DC_Siglent: #Developer: Jeppe Surrow
             time.sleep(0.04)
             self.instr.write('CH' + str(channel) + ':VOLT ' + str(voltage))
             time.sleep(0.1)
-
-            self.outputStatus(channel=channel, status='ON')
-            time.sleep(0.5)
 
             if alive:
                 print('DC_SIGLENT is alive')
@@ -1137,8 +1135,12 @@ class DC_Siglent: #Developer: Jeppe Surrow
 
 
         def outputStatus(self, channel=1, status='ON'):
-            # OUTPut ON/OFF is silently ignored over the raw socket — must go via VXI11
-            _spd3303x_vxi11_write(self.ip_address, f'OUTPut CH{channel},{status}')
+            if self.TCP:
+                # OUTPut ON/OFF is silently ignored over the raw socket (port 5025)
+                # even with correct syntax — VXI11 is required (confirmed firmware 1.01.01.02.05)
+                _spd3303x_vxi11_write(self.ip_address, f'OUTPut CH{channel},{status}')
+            else:
+                self.instr.write(f'OUTPut CH{channel},{status}')
 
 
         def closeConnection(self):
@@ -2326,14 +2328,15 @@ class RTO1024:
         (enabled : bool, eff_bits : float)
             eff_bits is HDEFinition:RESolution? when enabled, else 8.0.
         """
-        if state and not self.hasHighDefinition():
-            print('  HD mode requested but option K17 is not installed — using 8-bit.')
-            state = False
+        if not self.hasHighDefinition():
+            if state:
+                print('  HD mode requested but option K17 is not installed — using 8-bit.')
+            return False, 8.0
         if state:
             self.instr.write('HDEFinition:STATe ON')
             if bandwidth:
                 self.instr.write(f'HDEFinition:BWIDth {float(bandwidth):.0f}')
-        elif self.hasHighDefinition():
+        else:
             self.instr.write('HDEFinition:STATe OFF')
         self.instr.query('*OPC?')
         on = self._query_or('HDEFinition:STATe?', '0') in ('1', 'ON')

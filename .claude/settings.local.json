@@ -8,7 +8,10 @@
       "WebFetch(domain:github.com)",
       "Bash(pdftotext -layout \"C:\\\\Users\\\\shd-photonics-inp\\\\Downloads\\\\RTO_UserManual_en_11.pdf\" -)",
       "Bash(pdftotext \"/c/Users/shd-photonics-inp/Downloads/RTO_UserManual_en_11.pdf\" -)",
-      "Bash(pip list *)"
+      "Bash(pip list *)",
+      "Bash(ping -n 3 192.168.1.87)",
+      "Bash(ping -n 3 192.168.1.31)",
+      "Bash(ping -n 2 192.168.1.87)"
     ]
   }
 }
