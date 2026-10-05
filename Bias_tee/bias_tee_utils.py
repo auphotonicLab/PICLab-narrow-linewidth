@@ -666,6 +666,41 @@ def tee_isolation_wiring_text(cfg, rx_text, dc_levels=(0,)):
             + short_warning(cfg, dc_levels))
 
 
+_live_figs = {}   # stage title -> figure number
+
+
+def _plot_live(cfg, sweeps, title):
+    """Non-blocking power-vs-frequency window that updates after each sweep completes."""
+    try:
+        fig_num = abs(hash(title)) % 9000 + 1000   # stable figure number per stage title
+        if fig_num not in _live_figs or not plt.fignum_exists(fig_num):
+            fig = plt.figure(fig_num, figsize=(9, 4))
+            _live_figs[fig_num] = fig
+        else:
+            fig = _live_figs[fig_num]
+            fig.clf()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_facecolor(SURFACE)
+        for i, r in enumerate(sweeps):
+            c = CATEGORICAL[i % len(CATEGORICAL)]
+            m = MARKERS[i % len(MARKERS)]
+            ls = '--' if r.get('isolated') else '-'
+            ax.plot(r['freq'], r['p_dbm'], ls, color=c, marker=m, ms=4, lw=1.4, label=r['label'])
+        ax.axhline(expected_dbm(cfg.VPP), color=MUTED, ls=':', lw=1.0,
+                   label='ideal (%.2f dBm)' % expected_dbm(cfg.VPP))
+        ax.set_xscale('log')
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('Tone power (dBm)')
+        ax.set_title(title + '  [live — updates after each sweep]', color=INK, fontsize=10)
+        ax.legend(fontsize=8, frameon=False, labelcolor=INK2)
+        _style_axes(ax)
+        fig.tight_layout()
+        fig.canvas.draw_idle()
+        plt.pause(0.05)
+    except Exception:
+        pass   # never break the measurement for a plot problem
+
+
 def stage1(S):
     """DC block only: direct, with EF500, with EF500 and AC-coupled receiver.
 
@@ -674,12 +709,15 @@ def stage1(S):
     """
     cfg = S.cfg
     S.set_rx_coupling('DC')
+    _title1 = 'Stage 1: DC block (EF500)'
     ask('STAGE 1-A (reference)\n  SDG CH%d  ->  %s  (direct, SMA/adapters only, NO DC block)\n'
         '  Receiver is DC-coupled: signal is pure AC (offset 0 V, verified by read-back).' % (cfg.AFG_CH, S.rx_text))
     A = S.sweep('direct')
+    _plot_live(cfg, [A], _title1)
     ask('STAGE 1-B\n  SDG CH%d  ->  Thorlabs EF500 DC block  ->  %s' % (cfg.AFG_CH, S.rx_text))
     B = S.sweep('with DC block')
     sweeps, pairs = [A, B], [(B['key'], A['key'])]
+    _plot_live(cfg, sweeps, _title1)
     if S.is_scope or cfg.STAGE1_ALSO_AC_COUPLED:
         S.set_rx_coupling('AC')
         ask('STAGE 1-C%s\n  Keep SDG -> EF500 -> receiver.  Receiver is now AC-coupled (pure AC, still safe).'
@@ -687,6 +725,7 @@ def stage1(S):
         C = S.sweep('block, AC-coupled')
         sweeps.append(C)
         pairs.append((C['key'], A['key']))
+        _plot_live(cfg, sweeps, _title1)
     return {'stage': 1, 'title': 'Stage 1: DC block (EF500)', 'sweeps': sweeps, 'pairs': pairs,
             'monitor_dc': False, 'color_mode': 'categorical',
             'what': 'DC block insertion loss (relative to direct)'}
@@ -696,11 +735,14 @@ def stage2(S):
     """Bias tee with pure AC; reference = DC block only."""
     cfg = S.cfg
     S.set_rx_coupling('AC')
+    _title2 = 'Stage 2: bias tee, pure AC'
     ask('STAGE 2-R (reference, no bias tee)\n  SDG CH%d  ->  EF500  ->  %s (AC-coupled)' % (cfg.AFG_CH, S.rx_text))
     R = S.sweep('ref: block only')
+    _plot_live(cfg, [R], _title2)
     S.keithley.AssertHighZ()
     ask('STAGE 2-T (bias tee, pure AC)\n' + tee_wiring_text(cfg, S.rx_text))
     T = S.sweep('bias tee, AC only', monitor_dc=True)
+    _plot_live(cfg, [R, T], _title2)
     return {'stage': 2, 'title': 'Stage 2: bias tee, pure AC', 'sweeps': [R, T], 'pairs': [(T['key'], R['key'])],
             'monitor_dc': True, 'color_mode': 'categorical',
             'what': 'Bias tee insertion loss (relative to block-only reference)'}
@@ -719,11 +761,13 @@ def stage3(S):
     ask('STAGE 3 (bias tee, AC + PD-like DC)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V) +
         '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
         % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
+    _title3 = 'Stage 3: bias tee, AC + DC'
     sweeps = []
     for lvl in cfg.PD_DC_LEVELS_V:
         sweeps.append(S.sweep('DC %.2f V (tee %.2f V)' % (lvl, cfg.DC_AT_TEE_FACTOR * lvl),
                               offset=lvl, monitor_dc=True))
         S.afg_output_off()
+        _plot_live(cfg, sweeps, _title3)
     base = sweeps[0]
     pairs = [(r['key'], base['key']) for r in sweeps[1:]]
 
@@ -741,6 +785,7 @@ def stage3(S):
             sw['isolated'] = True
             iso_sweeps.append(sw)
             S.afg_output_off()
+            _plot_live(cfg, sweeps + iso_sweeps, _title3)
         iso_base = iso_sweeps[0]
         sweeps.extend(iso_sweeps)
         pairs.extend([(r['key'], iso_base['key']) for r in iso_sweeps[1:]])
@@ -1187,7 +1232,8 @@ def write_stage_h5(path, cfg, S, label, res, comparisons):
             g = sg.create_group(r['key'])
             for k, v in (('label', r['label']), ('offset_V', r['offset']), ('vpp_V', r['vpp']),
                          ('expected_tee_dc_V', cfg.DC_AT_TEE_FACTOR * r['offset']),
-                         ('receiver_coupling', r['coupling']), ('t_start', r['t_start']), ('t_end', r['t_end'])):
+                         ('receiver_coupling', r['coupling']), ('t_start', r['t_start']), ('t_end', r['t_end']),
+                         ('isolated', r.get('isolated', False))):
                 g.attrs[k] = _attr(v)
             g.create_dataset('frequency_Hz', data=r['freq'])
             g.create_dataset('p_dbm', data=r['p_dbm'])
@@ -1253,6 +1299,113 @@ def write_stage_h5(path, cfg, S, label, res, comparisons):
                     ds.attrs['filename'] = os.path.basename(png)
                     ds.attrs['CLASS'] = 'IMAGE'
     print('  HDF5 saved: %s' % path)
+
+
+def make_all_spectra_report(cfg, res, base_path, show=False):
+    """All FFT spectra from every scope sweep overlaid on one log-frequency axis.
+
+    Each line is one frequency point from one sweep.  Colour = fundamental frequency (low=light, high=dark).
+    Useful for spotting harmonics across all frequencies and sweeps at a glance.
+    """
+    if cfg.MEASUREMENT != 'scope':
+        return
+    entries = []   # (f0, sweep_label, spec_f, spec_dbm, isolated)
+    for r in res['sweeps']:
+        for i, pt in enumerate(r['points']):
+            if pt is None or 'spec_f' not in pt:
+                continue
+            entries.append((r['freq'][i], r['label'], pt['spec_f'], pt['spec_dbm'], r.get('isolated', False)))
+    if not entries:
+        return
+    all_f0 = sorted(set(e[0] for e in entries))
+    cmap = plt.cm.plasma
+    f_color = {f: cmap(0.1 + 0.8 * i / max(len(all_f0) - 1, 1)) for i, f in enumerate(all_f0)}
+    with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
+        fig, ax = plt.subplots(figsize=(11, 5))
+        fig.patch.set_facecolor(SURFACE)
+        seen_f0 = set()
+        for f0, sweep_lbl, sf, sd, iso in entries:
+            c = f_color[f0]
+            ls = '--' if iso else '-'
+            scale, unit = _hz_unit(f0)
+            lbl = '%.4g %s' % (f0 / scale, unit) if f0 not in seen_f0 else None
+            seen_f0.add(f0)
+            ax.plot(sf, sd, ls, color=c, lw=0.7, alpha=0.65, label=lbl)
+        ax.set_xscale('log')
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('Power (dBm into 50 \u03a9)')
+        ax.set_ylim(-110, 10)
+        ax.set_title(res['title'] + ' \u2013 all FFT spectra overlaid\n'
+                     'colour = fundamental frequency (light \u2192 dark = low \u2192 high); '
+                     'solid = with EF500, dashed = no EF500', color=INK, fontsize=10)
+        ax.legend(fontsize=7, frameon=False, labelcolor=INK2, ncol=4)
+        _style_axes(ax)
+        fig.tight_layout()
+        for ext in ('pdf', 'svg'):
+            p = '%s.%s' % (base_path, ext)
+            fig.savefig(p, bbox_inches='tight', facecolor=fig.get_facecolor())
+            print('  Saved: %s' % p)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+
+def make_dc_response_report(cfg, res, base_path, show=False):
+    """Stage 3 only: AC power change vs DC bias level for a selection of frequencies.
+
+    Two subplots when isolation sweeps are present (with EF500 / without EF500).
+    X-axis: SDG offset (V into 50 Ω).  Y-axis: ΔP vs 0 V sweep (dB).
+    """
+    if res.get('stage') != 3:
+        return
+    block_sweeps = [r for r in res['sweeps'] if not r.get('isolated')]
+    iso_sweeps   = [r for r in res['sweeps'] if r.get('isolated')]
+    if not block_sweeps:
+        return
+
+    freqs = np.array(cfg.FREQUENCIES_HZ)
+    # Pick a representative subset of frequencies (at most 10, spread across range)
+    idx_all = np.where(np.isfinite(block_sweeps[0]['p_dbm']))[0]
+    if len(idx_all) == 0:
+        return
+    step = max(1, len(idx_all) // 10)
+    plot_idx = idx_all[::step]
+    colors = _seq_colors(len(plot_idx))
+
+    groups = [('with EF500 DC block', block_sweeps)]
+    if iso_sweeps:
+        groups.append(('no EF500 (isolation)', iso_sweeps))
+
+    with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
+        fig, axes = plt.subplots(len(groups), 1, figsize=(9, 3.8 * len(groups) + 0.8),
+                                 sharex=True, squeeze=False)
+        fig.patch.set_facecolor(SURFACE)
+        for ax, (grp_title, grp_sweeps) in zip(axes[:, 0], groups):
+            dc = np.array([r['offset'] for r in grp_sweeps])
+            ref_p = grp_sweeps[0]['p_dbm']   # 0 V reference
+            for fi, c in zip(plot_idx, colors):
+                f0 = freqs[fi]
+                scale, unit = _hz_unit(f0)
+                delta = np.array([r['p_dbm'][fi] for r in grp_sweeps]) - ref_p[fi]
+                ax.plot(dc, delta, '-o', color=c, ms=4, lw=1.4,
+                        label='%.4g %s' % (f0 / scale, unit))
+            ax.axhline(0, color=AXIS, lw=0.8)
+            ax.set_ylabel('\u0394P vs 0 V (dB)\n' + grp_title)
+            ax.legend(fontsize=7, frameon=False, labelcolor=INK2, ncol=2)
+            _style_axes(ax)
+        axes[-1, 0].set_xlabel('SDG DC offset (V into 50 \u03a9)  \u2014  bias tee DC port \u2248 %g\u00d7 (V)'
+                               % cfg.DC_AT_TEE_FACTOR)
+        fig.suptitle(res['title'] + ' \u2013 AC response vs DC bias level', color=INK, fontsize=11)
+        fig.tight_layout()
+        for ext in ('pdf', 'svg'):
+            p = '%s.%s' % (base_path, ext)
+            fig.savefig(p, bbox_inches='tight', facecolor=fig.get_facecolor())
+            print('  Saved: %s' % p)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
 
 
 def load_scope_record(h5_path, sweep_key, point_index, record=0):
