@@ -51,6 +51,11 @@ BIT_RATE      = 20e6       # [bps]
 SEQUENCE      = 'PRBS7'
 AFG_DATA_CH   = 1
 AFG_CLOCK_CH  = 2
+AFG_PRBS_LOAD_OHM   = 50          # [Ω] PRBS output load impedance
+AFG_CLOCK_AMP_V     = 3.3         # [V] clock peak-to-peak amplitude
+AFG_CLOCK_OFFSET_V  = 1.65        # [V] clock DC offset (→ 0–3.3 V swing)
+AFG_CLOCK_LOAD      = 'HZ'        # clock load: 'HZ' = high-impedance
+AFG_CLOCK_RISE_S    = 2e-9        # [s] clock rise/fall time
 
 OSC_SIGNAL_CH    = 1           # CH1 — reference signal
 OSC_CHIP_CH      = 2           # CH2 — through-chip signal
@@ -58,12 +63,12 @@ OSC_CLOCK_CH     = 3           # CH3 — clock / trigger
 OSC_TRIGGER_SRC  = 'CH3'
 # 2 bit periods across 10 divisions → TIME_SCALE = 2/(BIT_RATE*10) = 1/(BIT_RATE*5)
 TIME_SCALE       = 1 / (BIT_RATE * 5)   # [s/div]
-VOLT_SCALE       = 0.2         # [V/div] — CH1 reference signal
-SIGNAL_OFFSET    = 0.67         # [V] — CH1 display centre
-CHIP_VOLT_SCALE  = 0.002         # [V/div] — CH2 through-chip signal
-CHIP_OFFSET      = 0.0         # [V] — CH2 display centre
+VOLT_SCALE       = 0.4         # [V/div] — CH1 reference signal
+SIGNAL_OFFSET    = 1.424         # [V] — CH1 display centre
+CHIP_VOLT_SCALE  = 0.4         # [V/div] — CH2 through-chip signal
+CHIP_OFFSET      = 1.068         # [V] — CH2 display centre
 CLOCK_VOLT_SCALE = 0.5         # [V/div] — CH3 clock
-CLOCK_OFFSET     = 0.0         # [V] — CH3 display centre
+CLOCK_OFFSET     = 1.76         # [V] — CH3 display centre
 TRIGGER_LEVEL    = 1.65         # [V] — rising edge of 0–3.3 V clock
 OSC_BW_LIMIT     = 200e6       # [Hz] per-channel bandwidth limit; None = full bandwidth
 
@@ -75,13 +80,13 @@ RECORD_LENGTH   = None         # None = max real-time rate (10 GSa/s, 5 GSa/s in
 #   voltage bin = one ADC level  (8 bit: V/div·10/253, HD: from HDEFinition:RESolution?)
 #   time bin    = one sample interval (100 ps at 10 GSa/s → 1000 bins over 2 UI at 20 Mbps)
 EYE_V_LEVELS_PER_BIN  = 1      # integer; >1 merges ADC levels (coarser, still alias-free)
-EYE_T_SAMPLES_PER_BIN = 1      # integer; >1 merges sample intervals
+EYE_T_SAMPLES_PER_BIN = 1      # integer; >1 merges sample interval s
 EYE_SMOOTH      = 0            # Gaussian sigma (bins); 0 = off
 PLOT_DPI        = 600          # only matters for raster output; PDF/SVG embed the histogram at native size
 
 PM_SERIAL         = 'P0024530'
-SAVE_FOLDER       = r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Eye_diagram\Eye_diagram_data'
-DEFAULT_SAVE_LABEL = 'Eye_diagram_1550nm_ref(ch1)+775nm_chip(ch2)'
+SAVE_FOLDER       = r'C:\Users\shd-photonics-inp\Documents\Maksimas\Eye_diagram_data' #r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Eye_diagram\Eye_diagram_data'
+DEFAULT_SAVE_LABEL = 'Eye_diagram_Agilent_6dBm_EDFA_before_AM_1185mA_80mW_split_1-99_1542.9832nm_ref(ch1)_3dBatt_0.38mW+782nm_chip(ch2)_70mW_pump_0.6mW_signal_WG_width_1200nm_long_ox2'#'Eye_diagram_1550nm_ref(ch1)+775nm_chip(ch2)'
 
 # =============================================================================
 # Measurement
@@ -145,8 +150,10 @@ try:
     afg.output_status(channel=AFG_DATA_CH,  status='OFF')
     afg.output_status(channel=AFG_CLOCK_CH, status='OFF')
     afg.setPRBS(channel=AFG_DATA_CH, bit_rate=BIT_RATE,
-                sequence=SEQUENCE, amplitude=v_pp, load=50)
-    afg.setClock(channel=AFG_CLOCK_CH, bit_rate=BIT_RATE)
+                sequence=SEQUENCE, amplitude=v_pp, load=AFG_PRBS_LOAD_OHM)
+    afg.setClock(channel=AFG_CLOCK_CH, bit_rate=BIT_RATE,
+                 amplitude=AFG_CLOCK_AMP_V, offset=AFG_CLOCK_OFFSET_V,
+                 load=AFG_CLOCK_LOAD, rise_time=AFG_CLOCK_RISE_S)
     afg.output_status(channel=AFG_CLOCK_CH, status='ON')
     time.sleep(0.2)
     afg.output_status(channel=AFG_DATA_CH,  status='ON')
@@ -211,8 +218,9 @@ try:
                                           bit_rate=BIT_RATE,
                                           volt_scale=VOLT_SCALE,
                                           record_length=RECORD_LENGTH,
-                                          extra_channels=[OSC_CHIP_CH])
-    t_chip, v_chip = extra[OSC_CHIP_CH]
+                                          extra_channels=[OSC_CHIP_CH, OSC_CLOCK_CH])
+    t_chip,  v_chip  = extra[OSC_CHIP_CH]
+    t_clock, v_clock = extra[OSC_CLOCK_CH]
     acq = osc.last_acquisition
     bit_period = 1.0 / BIT_RATE
     dt = acq['sample_interval_s']
@@ -264,27 +272,46 @@ try:
             levels_per_bin=EYE_V_LEVELS_PER_BIN, label=label)
         eu.check_clipping(v_arr, vi['volt_scale_V_per_div'], vi['offset_V'], label)
         H, t_ed, v_ed, t_off_ch = eu.make_eye(
-            t_arr, v_arr, bit_period, dt, vgrid, t_offset=_t_off,
+            t_arr, v_arr, bit_period, dt, vgrid, t_offset=None,
             samples_per_bin=EYE_T_SAMPLES_PER_BIN, smooth=EYE_SMOOTH)
         if _t_off is None:
-            _t_off = t_off_ch            # reuse phase so both eyes are time-aligned
+            _t_off = t_off_ch
         eu.describe_bins(label, vgrid, t_ed, v_ed, dt)
         eu.plot_eye(H, t_ed, v_ed,
                     f'Persistence Eye — {label} — {BIT_RATE/1e6:.0f} Mbps {SEQUENCE}',
                     os.path.join(_run_folder, prefix), dpi=PLOT_DPI, show=True)
         chans.append(dict(name=name, channel=ch, description=desc,
                           t=t_arr, v=v_arr, H=H, t_ed=t_ed, v_ed=v_ed,
-                          vgrid=vgrid, dt=dt, wf_attrs=vi,
+                          vgrid=vgrid, dt=dt, wf_attrs=vi, t_offset=t_off_ch,
                           metrics=m_ref if name == 'reference' else m_chip))
+
+    chans.append(dict(name='clock', channel=OSC_CLOCK_CH, description='Clock signal',
+                      t=t_clock, v=v_clock, dt=dt,
+                      wf_attrs=acq['vertical'][OSC_CLOCK_CH]))
 
     # =========================================================================
     # Save everything to a single HDF5 file
     # =========================================================================
     root_attrs = dict(
         timestamp=_timestamp, label=SAVE_LABEL,
-        bit_rate_Hz=BIT_RATE, sequence=SEQUENCE,
+        # DC supply
+        dc_ip=DC_IP, dc_channel=DC_CHANNEL, dc_current_A=DC_CURRENT,
+        max_dc_voltage_V=MAX_DC_VOLT,
         v_quad_V=v_quad, v_pp_V=v_pp,
-        dc_channel=DC_CHANNEL, dc_current_A=DC_CURRENT,
+        run_charac=RUN_CHARAC,
+        pm_serial=PM_SERIAL if RUN_CHARAC else '',
+        # Signal generator — PRBS
+        afg_ip=AFG_IP,
+        afg_data_ch=AFG_DATA_CH, afg_clock_ch=AFG_CLOCK_CH,
+        bit_rate_Hz=BIT_RATE, sequence=SEQUENCE,
+        afg_prbs_load_ohm=AFG_PRBS_LOAD_OHM,
+        # Signal generator — clock
+        afg_clock_amp_V=AFG_CLOCK_AMP_V,
+        afg_clock_offset_V=AFG_CLOCK_OFFSET_V,
+        afg_clock_load=AFG_CLOCK_LOAD,
+        afg_clock_rise_s=AFG_CLOCK_RISE_S,
+        # Oscilloscope — channels
+        osc_ip=OSC_IP,
         osc_signal_ch=OSC_SIGNAL_CH, osc_chip_ch=OSC_CHIP_CH, osc_clock_ch=OSC_CLOCK_CH,
         trigger_source=OSC_TRIGGER_SRC, trigger_level_V=TRIGGER_LEVEL,
         time_scale_s_per_div=TIME_SCALE,
@@ -293,9 +320,11 @@ try:
         chip_volt_scale_V_per_div=acq['vertical'][OSC_CHIP_CH]['volt_scale_V_per_div'],
         chip_offset_V=acq['vertical'][OSC_CHIP_CH]['offset_V'],
         clock_volt_scale_V_per_div=CLOCK_VOLT_SCALE, clock_offset_V=CLOCK_OFFSET,
-        bw_limit_Hz=OSC_BW_LIMIT if (OSC_BW_LIMIT and not acq['hd_mode']) else -1,
+        bw_limit_Hz=OSC_BW_LIMIT if OSC_BW_LIMIT else -1,
         coupling='DC',
+        # Oscilloscope — acquisition
         n_ui_persistence=N_UI,
+        n_periods=N_PERIODS,
         record_length_requested=RECORD_LENGTH if RECORD_LENGTH else -1,
         record_length_actual=len(v),
         sample_interval_s=dt,
@@ -304,6 +333,7 @@ try:
         hd_mode=acq['hd_mode'],
         hd_resolution_bits=acq['hd_resolution_bits'],
         hd_bandwidth_Hz=acq['hd_bandwidth_Hz'] if acq['hd_bandwidth_Hz'] else -1,
+        # Eye diagram binning
         eye_binning='adc_truthful',
         eye_v_levels_per_bin=EYE_V_LEVELS_PER_BIN,
         eye_t_samples_per_bin=EYE_T_SAMPLES_PER_BIN,
