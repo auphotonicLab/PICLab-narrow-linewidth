@@ -1417,6 +1417,103 @@ def load_scope_record(h5_path, sweep_key, point_index, record=0):
         return np.arange(len(v)) * q.attrs['dt_s'], v
 
 
+def load_stage_result(h5_path):
+    """Load a stage HDF5 file and return (cfg, res) compatible with all make_*_report functions.
+
+    Both completed (*_data.h5) and aborted (*_PARTIAL_data.h5) files are supported.
+    Scope spectra and ESA traces are loaded; raw ADC codes are NOT loaded (not needed for plots).
+    """
+    import types, json as _json
+    with h5py.File(h5_path, 'r') as hf:
+        cfg_dict = _json.loads(hf['config'].attrs['config_json'])
+        cfg = types.SimpleNamespace(**cfg_dict)
+        cfg.MEASUREMENT = str(hf.attrs.get('receiver', cfg_dict.get('MEASUREMENT', 'scope')))
+
+        stage    = int(hf.attrs.get('stage', 1))
+        title    = str(hf.attrs.get('title', 'Stage %d' % stage))
+        is_scope = cfg.MEASUREMENT == 'scope'
+
+        sweeps = []
+        sg = hf['sweeps']
+        n_freq = None
+        for key in sg:
+            g = sg[key]
+            freq = g['frequency_Hz'][()]
+            if n_freq is None:
+                n_freq = len(freq)
+            nan = np.full(len(freq), np.nan)
+            r = {
+                'label':        str(g.attrs['label']),
+                'key':          key,
+                'offset':       float(g.attrs.get('offset_V', 0.0)),
+                'vpp':          float(g.attrs.get('vpp_V', 0.5)),
+                'coupling':     str(g.attrs.get('receiver_coupling', 'DC')),
+                'isolated':     bool(g.attrs.get('isolated', False)),
+                'freq':         freq,
+                'p_dbm':        g['p_dbm'][()] if 'p_dbm' in g else nan.copy(),
+                'v_dc':         g['v_dc_V'][()] if 'v_dc_V' in g else nan.copy(),
+                'snr_db':       g['snr_dB'][()] if 'snr_dB' in g else nan.copy(),
+                'h2_dbc':       g['h2_dBc'][()] if 'h2_dBc' in g else nan.copy(),
+                'h3_dbc':       g['h3_dBc'][()] if 'h3_dBc' in g else nan.copy(),
+                'afg_readback': [None] * len(freq),
+                'screenshots':  [],
+                'points':       [None] * len(freq),
+            }
+            # Infer isolated from label for files written before the isolated flag was added
+            if not r['isolated'] and 'no block' in r['label']:
+                r['isolated'] = True
+            if 'points' in g:
+                for pt_key in sorted(g['points'].keys()):
+                    idx = int(pt_key[1:])   # 'f07' -> 7
+                    q = g['points'][pt_key]
+                    pt = {'p_dbm': float(q.attrs.get('p_dbm', np.nan)),
+                          'snr_db': float(q.attrs.get('snr_dB', np.nan)),
+                          'v_dc':   float(q.attrs.get('v_dc_V', np.nan))}
+                    if 'spectrum_f_Hz' in q:       # scope
+                        pt.update({
+                            'spec_f':   q['spectrum_f_Hz'][()],
+                            'spec_dbm': q['spectrum_dBm'][()],
+                            'f_peak':   float(q.attrs.get('f_peak_Hz', 0)),
+                            'h2_dbc':   float(q.attrs.get('h2_dBc', np.nan)),
+                            'h3_dbc':   float(q.attrs.get('h3_dBc', np.nan)),
+                            'vdiv':     float(q.attrs.get('vdiv_V_per_div', 0.1)),
+                            'ofst':     float(q.attrs.get('volt_offset_V', 0.0)),
+                            'dt':       float(q.attrs.get('dt_s', 1e-7)),
+                            'sample_rate': float(q.attrs.get('sample_rate_Sa_s', 1e7)),
+                            'tdiv':     float(q.attrs.get('tdiv_s', 2e-3)),
+                            'pp_codes': int(q.attrs.get('pp_codes', 0)),
+                            'clipped':  bool(q.attrs.get('clipped', False)),
+                            'records':  [],   # raw codes not loaded — not needed for plots
+                        })
+                    elif 'trace_f_Hz' in q:        # ESA
+                        pt.update({
+                            'trace_f':    q['trace_f_Hz'][()],
+                            'trace_dbm':  q['trace_dBm'][()],
+                            'center_hz':  float(q.attrs.get('center_Hz', 0)),
+                            'span_hz':    float(q.attrs.get('span_Hz', 0)),
+                            'rbw_hz':     float(q.attrs.get('rbw_Hz', 0)),
+                        })
+                    r['points'][idx] = pt
+            sweeps.append(r)
+
+        # Reconstruct comparison pairs in insertion order
+        pairs = []
+        if 'comparisons' in hf:
+            for skey in hf['comparisons']:
+                rkey = str(hf['comparisons'][skey].attrs['reference'])
+                pairs.append((skey, rkey))
+
+        color_mode = 'sequential' if stage == 3 else 'categorical'
+        monitor_dc = stage >= 2
+        what_map = {1: 'DC block insertion loss (relative to direct)',
+                    2: 'Bias tee insertion loss (relative to block-only reference)',
+                    3: 'Change of AC response vs the 0 V sweep'}
+        res = {'stage': stage, 'title': title, 'sweeps': sweeps, 'pairs': pairs,
+               'monitor_dc': monitor_dc, 'color_mode': color_mode,
+               'what': what_map.get(stage, '')}
+    return cfg, res
+
+
 # =============================================================================
 # Run one stage and save everything
 # =============================================================================
@@ -1445,7 +1542,10 @@ def run_stage(S, stage, run_folder, label):
     print('\nSaving ...')
     save_csv(cfg, os.path.join(run_folder, base + '_summary.csv'), res)
     write_stage_h5(os.path.join(run_folder, base + '_data.h5'), cfg, S, label, res, comparisons)    # data first
-    for fn, suffix in ((make_report, '_report'), (make_spectra_report, '_spectra'), (make_fft_check_report, '_fftcheck')):
+    for fn, suffix in ((make_report, '_report'), (make_spectra_report, '_spectra'),
+                       (make_fft_check_report, '_fftcheck'),
+                       (make_all_spectra_report, '_allspectra'),
+                       (make_dc_response_report, '_dcresponse')):
         try:
             fn(cfg, res, os.path.join(run_folder, base + suffix), show=cfg.SHOW_PLOTS)
         except Exception as e:                       # a plotting problem must never lose the measurement
