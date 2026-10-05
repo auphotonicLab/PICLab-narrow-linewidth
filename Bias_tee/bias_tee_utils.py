@@ -229,7 +229,7 @@ class Setup:
         self.is_scope = (self.kind == 'scope')
         self.rx_coupling = None
         self.rx_dc_coupled = None        # True only for a DC-coupled ESA input => no DC allowed
-        self.rx_text = ('scope CH%d (1 MOhm input, with a 50 ohm feed-through terminator)' % cfg.SCOPE_CH
+        self.rx_text = ('scope CH%d (50 ohm input)' % cfg.SCOPE_CH
                         if self.is_scope else RECEIVER_NAMES[self.kind])
         self.last_vdiv = None
         self.last_snr = np.nan
@@ -295,7 +295,7 @@ class Setup:
         self.stage_sweeps = []              # every sweep of this stage, also an aborted one (for the partial save)
         self.stage_settings = {}
         if self.is_scope and self.screenshots_ok and self.cfg.SCREENSHOT_FREQS_HZ:
-            print('NOTE: to compare with the scope\'s own FFT, enable Math -> FFT (source C%d, window Flat Top, unit dBm/dBVrms) '
+            print('NOTE: to compare with the scope\'s own FFT, enable Math -> FFT (source C%d, window Flat Top, unit dBm) '
                   'on the scope screen now;\n      the screenshots then show it next to the time signal (see the _fftcheck figure).'
                   % self.cfg.SCOPE_CH)
         self.stage_settings['stage_start'] = self.settings_snapshot()
@@ -347,7 +347,7 @@ class Setup:
             self.recv.SetChannel(cfg.SCOPE_CH, coupling=cfg.SCOPE_COUPLING[coupling], vdiv=self.last_vdiv or 0.1,
                                  offset=0.0, bandwidth_limit=cfg.SCOPE_BWL)
             print('Scope coupling:', cfg.SCOPE_COUPLING[coupling])
-            self.rx_dc_coupled = False     # 1 MOhm scope input tolerates DC (and the tee / DC block sit in front)
+            self.rx_dc_coupled = False     # scope handles DC on its 50 ohm input; flag only guards ESA inputs
         elif self.kind == 'fsw':
             self.recv.SetCoupling(coupling)
             got = self.recv.GetCoupling()
@@ -415,15 +415,25 @@ class Setup:
         sc.SetTimebase(tdiv, cfg.SCOPE_MEMORY)
         vdiv = self.last_vdiv or sc.nearest_vdiv(vpp / 6.0)
         lo, hi = cfg.SCOPE_PP_CODES
-        for _ in range(8):                                   # vertical auto-scale (8 bit => keep signal large)
+        for _ in range(12):                                  # vertical auto-scale (8 bit => keep signal large)
             sc.SetVertical(cfg.SCOPE_CH, vdiv, 0.0)
-            codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
+            for _retry in range(3):
+                codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
+                if len(codes) > 0:
+                    break
+                print('  warning: scope returned empty waveform, retrying...  scope state: %s  (INR new-acquisition flag seen: %s)'
+                      % (sc.Diagnose(cfg.SCOPE_CH), getattr(sc, 'acq_done', '?')))
+            if len(codes) == 0:
+                raise RuntimeError('Scope returned empty waveform after 3 retries at %.0f Hz  scope state: %s' % (freq, sc.Diagnose(cfg.SCOPE_CH)))
             pp = int(codes.max()) - int(codes.min())
             clipped = bool(codes.max() >= 126 or codes.min() <= -127)
             if clipped:
                 new = sc.nearest_vdiv(vdiv_rb * 2.0)
             elif pp > hi or pp < lo:
-                new = sc.nearest_vdiv(vdiv_rb * max(pp, 1) / 150.0)      # aim at ~6 div pk-pk
+                if pp < 4:
+                    new = sc.nearest_vdiv(vpp / 6.0)        # near-zero pp: reset to vpp-based estimate
+                else:
+                    new = sc.nearest_vdiv(vdiv_rb * pp / 150.0)   # aim at ~6 div pk-pk
             else:
                 break
             if new == vdiv_rb:
@@ -440,7 +450,13 @@ class Setup:
         records, v2 = [codes], []
         for i in range(cfg.SCOPE_NACQ):
             if i:
-                codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
+                for _retry in range(3):
+                    codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
+                    if len(codes) > 0:
+                        break
+                    print('  warning: scope returned empty waveform, retrying...  scope state: %s' % sc.Diagnose(cfg.SCOPE_CH))
+                if len(codes) == 0:
+                    raise RuntimeError('Scope returned empty waveform on record %d at %.0f Hz' % (i, freq))
                 records.append(codes)
             volt = codes.astype(float) * vdiv_rb / 25.0 - ofst
             sp = tone_spectrum(volt, dt, freq)
@@ -637,8 +653,25 @@ def tee_wiring_text(cfg, rx_text, dc_levels=(0,)):
             '  Do NOT connect anything else to the DC port.\n' + short_warning(cfg, dc_levels))
 
 
+def tee_isolation_wiring_text(cfg, rx_text, dc_levels=(0,)):
+    """Wiring text for scope-only bias tee isolation sweeps (no EF500, scope DC-coupled)."""
+    return ('  Remove the EF500 DC block.\n'
+            '  SDG CH%d (50 ohm mode)  ->  bias tee  AC+DC input\n' % cfg.AFG_CH +
+            '  bias tee  AC output  ->  ' + rx_text + ' (DC-coupled, NO EF500)\n'
+            '  bias tee  DC output  ->  Keithley 2450  (unchanged)\n'
+            + ('  (series resistor in the DC line: %g ohm, close to the bias tee connector)\n' % cfg.DC_PORT_SERIES_R_OHM
+               if cfg.DC_PORT_SERIES_R_OHM > 0 else '') +
+            '  Do NOT connect anything else to the DC port.\n'
+            '  NOTE: the scope will see any DC leakage through the bias tee AC path; this is what we are measuring.\n'
+            + short_warning(cfg, dc_levels))
+
+
 def stage1(S):
-    """DC block only: direct, with EF500, (optionally) with EF500 and AC-coupled receiver."""
+    """DC block only: direct, with EF500, with EF500 and AC-coupled receiver.
+
+    Sweep C (AC-coupled) always runs for the scope (needed as the stage 2 receiver baseline).
+    For ESA receivers it runs only when STAGE1_ALSO_AC_COUPLED is True.
+    """
     cfg = S.cfg
     S.set_rx_coupling('DC')
     ask('STAGE 1-A (reference)\n  SDG CH%d  ->  %s  (direct, SMA/adapters only, NO DC block)\n'
@@ -647,9 +680,10 @@ def stage1(S):
     ask('STAGE 1-B\n  SDG CH%d  ->  Thorlabs EF500 DC block  ->  %s' % (cfg.AFG_CH, S.rx_text))
     B = S.sweep('with DC block')
     sweeps, pairs = [A, B], [(B['key'], A['key'])]
-    if cfg.STAGE1_ALSO_AC_COUPLED:
+    if S.is_scope or cfg.STAGE1_ALSO_AC_COUPLED:
         S.set_rx_coupling('AC')
-        ask('STAGE 1-C (optional)\n  Keep SDG -> EF500 -> receiver.  Receiver is now AC-coupled (pure AC, still safe).')
+        ask('STAGE 1-C%s\n  Keep SDG -> EF500 -> receiver.  Receiver is now AC-coupled (pure AC, still safe).'
+            % ('' if S.is_scope else ' (optional)'))
         C = S.sweep('block, AC-coupled')
         sweeps.append(C)
         pairs.append((C['key'], A['key']))
@@ -673,7 +707,11 @@ def stage2(S):
 
 
 def stage3(S):
-    """Bias tee with AC + PD-like DC levels; reference = the 0 V sweep."""
+    """Bias tee with AC + PD-like DC levels; reference = the 0 V sweep.
+
+    For scope only: also runs isolation sweeps (bias tee AC port direct to scope, no EF500),
+    so the bias tee AC-path behaviour is tested both with and without the DC block.
+    """
     cfg = S.cfg
     S.set_rx_coupling('AC')
     if S.kind == 'ssa':
@@ -687,8 +725,28 @@ def stage3(S):
                               offset=lvl, monitor_dc=True))
         S.afg_output_off()
     base = sweeps[0]
+    pairs = [(r['key'], base['key']) for r in sweeps[1:]]
+
+    if S.is_scope:
+        # Scope-only: remove EF500, connect bias tee AC out directly to scope (DC-coupled).
+        # Measures the true AC-path insertion loss of the bias tee alone.
+        S.set_rx_coupling('DC')
+        ask('STAGE 3 (bias tee isolation, no EF500)\n'
+            + tee_isolation_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V)
+            + '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
+            % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
+        iso_sweeps = []
+        for lvl in cfg.PD_DC_LEVELS_V:
+            sw = S.sweep('no block, DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
+            sw['isolated'] = True
+            iso_sweeps.append(sw)
+            S.afg_output_off()
+        iso_base = iso_sweeps[0]
+        sweeps.extend(iso_sweeps)
+        pairs.extend([(r['key'], iso_base['key']) for r in iso_sweeps[1:]])
+
     return {'stage': 3, 'title': 'Stage 3: bias tee, AC + DC', 'sweeps': sweeps,
-            'pairs': [(r['key'], base['key']) for r in sweeps[1:]],
+            'pairs': pairs,
             'monitor_dc': True, 'color_mode': 'sequential',
             'what': 'Change of AC response vs the 0 V sweep'}
 
@@ -750,16 +808,23 @@ def _seq_colors(n):
 
 
 def _series_styles(res):
-    """key -> (colour, marker, linestyle).  Categorical = identity; sequential = DC level (light -> dark)."""
+    """key -> (colour, marker, linestyle).  Categorical = identity; sequential = DC level (light -> dark).
+
+    In sequential mode, isolation sweeps (sw['isolated'] = True) use the same colour ramp as the
+    corresponding EF500 sweeps but with dashed lines so the two groups are visually distinct.
+    """
     sty = {}
     if res['color_mode'] == 'sequential':
         refs = {rk for _, rk in res['pairs']}
-        samples = [r for r in res['sweeps'] if r['key'] not in refs]
+        samples_block = [r for r in res['sweeps'] if r['key'] not in refs and not r.get('isolated')]
+        samples_iso   = [r for r in res['sweeps'] if r['key'] not in refs and r.get('isolated')]
         for r in res['sweeps']:
             if r['key'] in refs:
-                sty[r['key']] = (INK2, 'o', '--')
-        for r, c, m in zip(samples, _seq_colors(len(samples)), MARKERS * 2):
+                sty[r['key']] = (INK2, 'o', ':' if r.get('isolated') else '--')
+        for r, c, m in zip(samples_block, _seq_colors(len(samples_block)), MARKERS * 2):
             sty[r['key']] = (c, m, '-')
+        for r, c, m in zip(samples_iso, _seq_colors(len(samples_iso)), MARKERS * 2):
+            sty[r['key']] = (c, m, '--')
     else:
         for i, r in enumerate(res['sweeps']):
             sty[r['key']] = (CATEGORICAL[i % len(CATEGORICAL)], MARKERS[i % len(MARKERS)], '-')

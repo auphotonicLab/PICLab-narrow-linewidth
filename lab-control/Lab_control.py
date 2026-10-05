@@ -2738,6 +2738,7 @@ class SCOPE_SIGLENT_SDS:  #developer: Jeppe Surrow. Commands from the Siglent SD
             self.instr.write('MSIZ ' + str(memory_depth))
         self.instr.write('TRDL 0S')
         self.instr.write('ACQW SAMPLING')
+        self.instr.query('*OPC?')   # let the scope finish reconfiguring
         self.tdiv = self._num(self.instr.query('TDIV?'))
         return self.tdiv
 
@@ -2754,28 +2755,42 @@ class SCOPE_SIGLENT_SDS:  #developer: Jeppe Surrow. Commands from the Siglent SD
         self.instr.write('STOP')
 
     def Acquire(self, channel=1, wait=None):
-        """Free-run, stop, and read the stopped record of one channel.
+        """Free-run until a NEW acquisition has completed, stop, and read the stopped record of one channel.
 
-        Returns codes (int8), vdiv, offset, dt (s/sample). Trigger position is irrelevant for
-        spectra, so no trigger condition is needed (AUTO mode).
+        'Acquisition done' = INR bit 0 'new signal acquired'. INR? reads and clears it, so it is cleared first.
+        `wait` is only the time-out of the polling (default: at least 1 s).
         """
+        tdiv = self._num(self.instr.query('TDIV?'))
         if wait is None:
-            wait = max(0.3, 3 * 14 * self._num(self.instr.query('TDIV?')))
+            wait = max(1.0, 20 * 14 * tdiv)
+        self.instr.query('INR?')                       # clear 'new signal acquired'
         self.instr.write('TRMD AUTO')
-        time.sleep(wait)
+        t0 = time.time()
+        self.acq_done = False
+        while time.time() - t0 < wait:
+            time.sleep(0.05)
+            if int(self._num(self.instr.query('INR?'))) & 1:
+                self.acq_done = True
+                break
         self.instr.write('STOP')
         self.instr.query('*OPC?')
+        time.sleep(0.1)
         return self.ReadStopped(channel)
 
-    def ReadStopped(self, channel=1):
+    def ReadStopped(self, channel=1, npts=None):
         ch = 'C' + str(channel)
         vdiv = self._num(self.instr.query(ch + ':VDIV?'))
         ofst = self._num(self.instr.query(ch + ':OFST?'))
         sara = self._num(self.instr.query('SARA?'))
-        self.instr.write('WFSU SP,1,NP,0,FP,0')       # all points
+        # NP,0 = all available points (SDS2000X-E programming guide, WFSU command)
+        self.instr.write('WFSU SP,1,NP,0,FP,0')
+        time.sleep(0.05)
         self.instr.write(ch + ':WF? DAT2')
         raw = self.instr.read_raw()
-        # reply: [header]#<n><n-digit length><data...>\n\n  (header is absent/present depending on CHDR)
+        # reply: [header]#<n><n-digit length><data...>\n\n  (header absent/present depending on CHDR)
+        if b'#' not in raw:
+            print('  DEBUG WF? raw (first 100 bytes): %r' % raw[:100])
+            return np.array([], dtype=np.int8), vdiv, ofst, 1.0 / sara
         i = raw.index(b'#')
         ndig = int(raw[i + 1:i + 2])
         length = int(raw[i + 2:i + 2 + ndig])
@@ -2784,6 +2799,16 @@ class SCOPE_SIGLENT_SDS:  #developer: Jeppe Surrow. Commands from the Siglent SD
             raise RuntimeError('Waveform block truncated: got %d of %d bytes' % (len(data), length))
         codes = np.frombuffer(data, dtype=np.int8)   # two's complement 8-bit
         return codes, vdiv, ofst, 1.0 / sara
+
+    def Diagnose(self, channel=1):
+        """Raw replies of the scope's acquisition state (for error messages)."""
+        out = {}
+        for q in ('SAST?', 'TRMD?', 'TDIV?', 'SARA?', 'MSIZ?', 'SANU? C%d' % channel, 'WFSU?'):
+            try:
+                out[q] = self.instr.query(q).strip()
+            except Exception as e:
+                out[q] = 'ERR %s' % e
+        return out
 
     def getWaveform(self, channel=1):
         """Acquire and return (time_axis [s], voltage [V]); same call signature as RTO1024.getWaveform."""

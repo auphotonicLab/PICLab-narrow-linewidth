@@ -64,25 +64,25 @@ import bias_tee_utils as bt
 # =============================================================================
 # Settings
 # =============================================================================
-STAGES_TO_RUN = [1]               # any of 1, 2, 3 (run in this order). Stages 2/3 need the Keithley.
+STAGES_TO_RUN = [3]               # any of 1, 2, 3 (run in this order). Stages 2/3 need the Keithley.
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 
 # --- instruments ---
 AFG_IP = '192.168.1.101'          # Siglent SDG6022X
 AFG_CH = 1
 AFG_LOAD = 50                     # SDG load setting (see 'DC convention')
-SCOPE_IP = ''                     # Siglent SDS2352X-E  <-- set this
+SCOPE_IP = '192.168.1.52'         # Siglent SDS2352X-E
 FSW_IP = '192.168.1.7'            # R&S FSW50
 SSA_IP = '192.168.1.11'           # Siglent SSA3021X
 KEITHLEY_IP = '192.168.1.151'     # Keithley 2450
 
 # --- saving ---
-SAVE_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')     # <-- set to the lab-PC data folder
+SAVE_FOLDER = r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Bias_tee'
 DEFAULT_SAVE_LABEL = ''           # pre-filled text in the label pop-up
 SAVE_SCREENSHOTS = True           # receiver screenshots (PNG, also embedded in the h5)
 SCREENSHOT_FREQS_HZ = [1e3, 1e5, 1e7]   # take a screenshot at these tones (set [] for none)
 SPECTRA_FREQS_HZ = [1e3, 1e5, 1e7]   # tones shown in the _spectra / _fftcheck figures (must be in FREQUENCIES_HZ)
-SHOW_PLOTS = False                # also open the plot windows at the end of each stage
+SHOW_PLOTS = False                 # also open the plot windows at the end of each stage
 
 # --- signal ---
 FREQUENCIES_HZ = sorted({m * 10 ** e for e in range(3, 7) for m in (1, 2, 3, 5, 7)} | {1e7})   # 1 kHz ... 10 MHz
@@ -102,7 +102,7 @@ DC_PORT_SERIES_R_OHM = 0.0        # resistor you put in series with the Keithley
 DC_PRECHECK_OFFSET_V = 0.1        # each DC sweep starts with this small SDG offset (2*0.1 V/50 ohm = 4 mA even into a dead short)
                                   # and only goes to the real level if the Keithley reads ~2x of it
 
-STAGE1_ALSO_AC_COUPLED = True     # extra sweep C in stage 1 (receiver AC-coupled, DC block, pure AC)
+STAGE1_ALSO_AC_COUPLED = False    # sweep C (AC-coupled, DC block): always runs for scope; set True to also run for ESA receivers
 SETTLE_S = 0.5                    # wait after changing the SDG
 PASS_TOL_DB = 1.0                 # flat-response criterion relative to the reference
 
@@ -112,7 +112,7 @@ ESA_NREAD = 2                     # sweeps per point (max of the peaks is report
 
 # --- scope settings ('scope') ---
 SCOPE_CH = 1
-SCOPE_COUPLING = {'DC': 'D1M', 'AC': 'A1M'}   # 1 MOhm; use an external 50 ohm feed-through terminator
+SCOPE_COUPLING = {'DC': 'D50', 'AC': 'A50'}   # 50 ohm input (built-in termination)
 SCOPE_MEMORY = '140K'             # memory depth (the scope reports what it really used)
 SCOPE_NCYC = 100                  # record length >= this many signal periods
 SCOPE_NACQ = 3                    # records per point (power-averaged)
