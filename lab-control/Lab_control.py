@@ -11,6 +11,7 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
+import re
 from datetime import datetime
 from TLPM import TLPM
 from tkinter import Tk, filedialog
@@ -864,9 +865,33 @@ class ESA_SIGLENT: #developer: Lars , modified by Mónica Far & Jeppe Surrow
             self.instr.write(':INITiate:IMMediate')
             self.instr.query('*OPC?')
             dataOut = [v for v in self.instr.query(':TRACe:DATA? 1').split(',') if v.strip() != '']
-            power.append(np.max(np.array(dataOut).astype(float)))
+            self.last_trace = np.array(dataOut).astype(float)   # trace of the last sweep (dBm), for saving
+            power.append(np.max(self.last_trace))
         self.instr.write(':INITiate:CONTinuous ON')
         return float(np.max(power))
+
+    def saveScreenshotToPC(self, local_path):
+        """Save the screen as a BMP file on the controlling PC (:HCOPy:SDUMp:DATA?, SSA3000X programming guide 3.2.16).
+
+        The guide only says the query returns the BMP data, so both a raw BMP and an IEEE block (#<n><len><data>) are handled.
+        """
+        old_timeout, old_term = self.instr.timeout, self.instr.read_termination
+        self.instr.timeout = 60000
+        self.instr.read_termination = None      # BMP bytes contain 0x0A
+        try:
+            self.instr.write(':HCOPy:SDUMp:DATA?')
+            raw = self.instr.read_raw()
+        finally:
+            self.instr.timeout, self.instr.read_termination = old_timeout, old_term
+        if raw[:1] == b'#':
+            ndig = int(raw[1:2])
+            n = int(raw[2:2 + ndig])
+            raw = raw[2 + ndig:2 + ndig + n]
+        else:
+            i = raw.find(b'BM')
+            raw = raw[i:] if 0 <= i < 64 else raw
+        with open(local_path, 'wb') as f:
+            f.write(raw)
 
     def CloseConnection(self):
         self.instr.close()
@@ -1513,16 +1538,21 @@ class DC_KEITHLEY_2450: #developer: Jeppe Surrow — 2450-specific SCPI commands
         self.instr.write(':SENS:VOLT:RANG:AUTO ON')
         self.instr.write(':SENS:VOLT:NPLC ' + str(nplc))
         self.__integtime__ = nplc
-        self.instr.write(':OUTP:SMOD HIMP')           # output-off state: high impedance
+        # Output-off state is stored per source function (2450 Ref. Manual, :OUTPut[1]:<function>:SMODe).
+        # NORMAL (default) = 0 V source with a current limit, i.e. a near short on the bias tee DC port!
+        self.instr.write(':OUTP:CURR:SMOD HIMP')      # output relay opens when the output is off
+        self.instr.write(':OUTP:VOLT:SMOD HIMP')      # same for the voltage function, in case the function is changed
         self.AssertHighZ()
         print('Keithley 2450: HIGH-IMPEDANCE voltmeter mode (source 0 A, measure V, Vlim = %g V).' % vlim)
 
     def AssertHighZ(self):
-        # Raises if the 2450 is not sourcing 0 A. Call before connecting/enabling output on the bias tee.
+        # Raises if the 2450 is not sourcing 0 A with the HIGH-Z output-off state. Call before connecting the bias tee.
         func = self.instr.query(':SOUR:FUNC?').strip().upper()
         amps = float(self.instr.query(':SOUR:CURR?'))
-        if not func.startswith('CURR') or amps != 0.0:
-            raise RuntimeError('Keithley 2450 is NOT in 0 A high-impedance mode (SOUR:FUNC=%s, SOUR:CURR=%g)' % (func, amps))
+        offstate = self.instr.query(':OUTP:CURR:SMOD?').strip().upper()
+        if not func.startswith('CURR') or amps != 0.0 or not offstate.startswith('HIMP'):
+            raise RuntimeError('Keithley 2450 is NOT in 0 A high-impedance mode (SOUR:FUNC=%s, SOUR:CURR=%g, off-state=%s)'
+                               % (func, amps, offstate))
 
 
 #ELECTRICAL SPECTRUM ANALYZERS:#
@@ -1637,6 +1667,7 @@ class ESA_RS_FSW50:  # R&S FSW50 (USB product ID 0x00CB); formerly misnamed ESA_
             self.instr.query('*OPC?')                               #Wait until
     
             dataOut = np.array(self.instr.query_binary_values('FORM REAL,32;:TRAC? TRACE1'))
+            self.last_trace = dataOut             #Trace of the last sweep, for saving
             power.append(np.max(dataOut)) #Record the maximum point on all 5 sweeps
         powermax=np.max(power)#Only pass on the maximum of the 5 peak values found
         return float(powermax)  #Return only the power value of the maximum within the sweep
@@ -1671,6 +1702,30 @@ class ESA_RS_FSW50:  # R&S FSW50 (USB product ID 0x00CB); formerly misnamed ESA_
 
     def ContDisplay(self):
         self.instr.write('INIT:CONT ON')
+
+    def saveScreenshotToPC(self, local_path):
+        """Save a PNG screenshot on the controlling PC (FSW manual: HCOPy:DEVice:LANGuage, MMEMory:NAME, HCOPy[:IMMediate]).
+
+        The screenshot is printed to a temporary file on the instrument, read back with MMEMory:DATA? and deleted.
+        """
+        scope_tmp = 'C:\\R_S\\instr\\user\\screenshot_tmp.png'
+        old_timeout = self.instr.timeout
+        self.instr.timeout = 60000
+        try:
+            self.instr.write('HCOP:DEV:LANG PNG')
+            self.instr.write("MMEM:NAME '" + scope_tmp + "'")
+            self.instr.write('HCOP:IMM')
+            self.instr.query('*OPC?')
+            raw = self.instr.query_binary_values("MMEM:DATA? '" + scope_tmp + "'",
+                                                 datatype='B', container=bytes)
+        finally:
+            self.instr.timeout = old_timeout
+        try:
+            self.instr.write("MMEM:DEL:IMM '" + scope_tmp + "'")
+        except Exception:
+            pass
+        with open(local_path, 'wb') as f:
+            f.write(raw)
 
     def CloseConnection(self):
         self.instr.close()
@@ -2735,6 +2790,20 @@ class SCOPE_SIGLENT_SDS:  #developer: Jeppe Surrow. Commands from the Siglent SD
         codes, vdiv, ofst, dt = self.Acquire(channel)
         volt = codes.astype(float) * vdiv / 25.0 - ofst
         return np.arange(len(volt)) * dt, volt
+
+    def saveScreenshotToPC(self, local_path):
+        """Save the screen as a BMP file on the controlling PC (SCDP query, SDS programming guide 'PRINT Commands')."""
+        old_timeout = self.instr.timeout
+        self.instr.timeout = 60000
+        try:
+            self.instr.write('SCDP')
+            raw = self.instr.read_raw()
+        finally:
+            self.instr.timeout = old_timeout
+        i = raw.find(b'BM')
+        raw = raw[i:] if 0 <= i < 64 else raw      # BMP signature (drops any text header)
+        with open(local_path, 'wb') as f:
+            f.write(raw)
 
     def closeConnection(self):
         self.instr.close()
