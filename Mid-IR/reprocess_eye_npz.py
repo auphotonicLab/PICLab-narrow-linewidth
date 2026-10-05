@@ -166,14 +166,14 @@ def reprocess(path):
                                         levels_per_bin=EYE_V_LEVELS_PER_BIN, label=desc)
         eu.check_clipping(v_arr, scale, offset, desc)
         H, t_ed, v_ed, t_off_ch = eu.make_eye(t_arr, v_arr, bit_period, dt, vgrid,
-                                              t_offset=t_off,
+                                              t_offset=None,
                                               samples_per_bin=EYE_T_SAMPLES_PER_BIN,
                                               smooth=EYE_SMOOTH)
         if t_off is None:
             t_off = t_off_ch
         eu.describe_bins(desc, vgrid, t_ed, v_ed, dt)
         chans.append(dict(name=name, channel=ch, description=desc, t=t_arr, v=v_arr,
-                          H=H, t_ed=t_ed, v_ed=v_ed, vgrid=vgrid, dt=dt,
+                          H=H, t_ed=t_ed, v_ed=v_ed, vgrid=vgrid, dt=dt, t_offset=t_off_ch,
                           wf_attrs={k: v for k, v in cm.items()
                                     if k not in ('channel', 'description', 'n_samples',
                                                  'v_min_V', 'v_max_V', 'v_mean_V',

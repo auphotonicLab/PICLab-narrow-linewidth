@@ -154,9 +154,10 @@ def check_clipping(v, volt_scale, offset, label=''):
     n_hi = int(np.sum(v >= top - 1.5 * step))
     n_lo = int(np.sum(v <= bot + 1.5 * step))
     if n_hi or n_lo:
-        print(f'  WARNING {label}: {n_hi} samples at the top / {n_lo} at the bottom '
-              f'of the ADC range [{bot:.3f}, {top:.3f}] V - signal is clipped. '
-              f'Increase V/div or adjust the offset.')
+        print(f'\n*** WARNING: {label} — signal is CLIPPED ***')
+        print(f'    {n_hi} samples at top / {n_lo} at bottom of ADC range '
+              f'[{bot:.3f}, {top:.3f}] V')
+        print(f'    Increase V/div or adjust the offset.\n')
 
 
 # =============================================================================
@@ -182,15 +183,22 @@ def regularise_time_axis(t):
 
 
 def find_t_offset(t_arr, v_arr, bit_period):
-    """Fold phase that puts the most common crossing in the middle of the 2-UI window."""
+    """Fold phase that centres the eye opening in each half of the 2-UI window.
+
+    Uses circular mean of crossing times for sub-sample accuracy — the
+    histogram approach introduces up to half-bin bias when the sample interval
+    is comparable to the bin width (e.g. 100 ps samples, 62.5 ps bins at 80 Mbps).
+    """
     threshold = 0.5 * (v_arr.max() + v_arr.min())
     idx = np.where(np.diff((v_arr > threshold).astype(int)) != 0)[0]
     if len(idx) < 4:
         return t_arr[0]
     fold_1T = (t_arr[idx] - t_arr[0]) % bit_period
-    counts, edges = np.histogram(fold_1T * 1e9, bins=200)
-    peak = np.argmax(counts)
-    cross_phase = 0.5 * (edges[peak] + edges[peak + 1]) * 1e-9
+    angle = fold_1T * (2 * np.pi / bit_period)
+    cross_phase = np.arctan2(np.mean(np.sin(angle)), np.mean(np.cos(angle)))
+    if cross_phase < 0:
+        cross_phase += 2 * np.pi
+    cross_phase *= bit_period / (2 * np.pi)
     return t_arr[0] + cross_phase - bit_period / 2
 
 
@@ -391,32 +399,34 @@ def write_eye_h5(h5_path, root_attrs, channels, t_offset, screenshots=None,
                 for k, val in (c.get('wf_attrs') or {}).items():
                     g.attrs[k] = _attr(val)
 
-            e = eg.create_group(c['name'])
-            if not include_waveforms:
-                e.attrs['sample_interval_s'] = float(c['dt'])
-                e.attrs['n_samples']         = len(c['v'])
-                for k, val in (c.get('wf_attrs') or {}).items():
-                    e.attrs['scope_' + k] = _attr(val)
-            e.create_dataset('H', data=c['H'].astype(np.float32), **ckw)
-            e.create_dataset('t_edges_ns', data=c['t_ed'])
-            e.create_dataset('v_edges_V',  data=c['v_ed'])
-            e.attrs['channel']            = c['channel']
-            e.attrs['description']        = c['description']
-            e.attrs['t_offset_s']         = float(t_offset)
-            e.attrs['shared_t_offset']    = i > 0
-            e.attrs['H_shape']            = f'{c["H"].shape[0]} (volt) × {c["H"].shape[1]} (time)'
-            e.attrs['eye_bins_time']      = len(c['t_ed']) - 1
-            e.attrs['eye_bins_volt']      = len(c['v_ed']) - 1
-            e.attrs['time_bin_s']         = float((c['t_ed'][1] - c['t_ed'][0]) * 1e-9)
-            for k, val in c['vgrid'].items():
-                e.attrs['vgrid_' + k] = _attr(val)
+            if c.get('H') is not None:
+                e = eg.create_group(c['name'])
+                if not include_waveforms:
+                    e.attrs['sample_interval_s'] = float(c['dt'])
+                    e.attrs['n_samples']         = len(c['v'])
+                    for k, val in (c.get('wf_attrs') or {}).items():
+                        e.attrs['scope_' + k] = _attr(val)
+                e.create_dataset('H', data=c['H'].astype(np.float32), **ckw)
+                e.create_dataset('t_edges_ns', data=c['t_ed'])
+                e.create_dataset('v_edges_V',  data=c['v_ed'])
+                e.attrs['channel']            = c['channel']
+                e.attrs['description']        = c['description']
+                ch_off = c.get('t_offset', t_offset)
+                e.attrs['t_offset_s']         = float(ch_off)
+                e.attrs['shared_t_offset']    = (ch_off == t_offset and i > 0)
+                e.attrs['H_shape']            = f'{c["H"].shape[0]} (volt) × {c["H"].shape[1]} (time)'
+                e.attrs['eye_bins_time']      = len(c['t_ed']) - 1
+                e.attrs['eye_bins_volt']      = len(c['v_ed']) - 1
+                e.attrs['time_bin_s']         = float((c['t_ed'][1] - c['t_ed'][0]) * 1e-9)
+                for k, val in c['vgrid'].items():
+                    e.attrs['vgrid_' + k] = _attr(val)
 
-            m = mg.create_group(c['name'])
-            m.attrs['label'] = c['metrics']['label']
-            for k, val in c['metrics'].items():
-                if k == 'label':
-                    continue
-                m.attrs[k] = 'NaN' if (isinstance(val, float) and np.isnan(val)) else float(val)
+                m = mg.create_group(c['name'])
+                m.attrs['label'] = c['metrics']['label']
+                for k, val in c['metrics'].items():
+                    if k == 'label':
+                        continue
+                    m.attrs[k] = 'NaN' if (isinstance(val, float) and np.isnan(val)) else float(val)
 
         if screenshots:
             sg = hf.create_group('screenshots')
