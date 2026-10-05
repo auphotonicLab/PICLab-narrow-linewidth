@@ -850,6 +850,24 @@ class ESA_SIGLENT: #developer: Lars , modified by Mónica Far & Jeppe Surrow
 
         return np.array([freqAxis, dataOut])
 
+    def ReadPeakPower(self, Nread=3):
+        # Peak of the trace in dBm (clear-write, single sweeps). Same behaviour as ESA_RS_FSW50.ReadPeakPower.
+        self.instr.write(':UNIT:POWer DBM')
+        self.instr.write(':TRAC1:MODE WRITe')
+        self.instr.write('FREQ:CENT ' + str(self.centerFreq) + ' MHz')
+        self.instr.write('FREQ:SPAN ' + str(self.spanFreq) + ' MHz')
+        self.instr.write('BWIDth ' + str(self.resolutionBW) + ' MHz')
+        self.instr.write('BWIDth:VID ' + str(self.videoBW) + ' MHz')
+        self.instr.write(':INITiate:CONTinuous OFF')
+        power = []
+        for x in range(Nread):
+            self.instr.write(':INITiate:IMMediate')
+            self.instr.query('*OPC?')
+            dataOut = [v for v in self.instr.query(':TRACe:DATA? 1').split(',') if v.strip() != '']
+            power.append(np.max(np.array(dataOut).astype(float)))
+        self.instr.write(':INITiate:CONTinuous ON')
+        return float(np.max(power))
+
     def CloseConnection(self):
         self.instr.close()
 
@@ -884,7 +902,7 @@ class AFG_Siglent:
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
         self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
         self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
-        self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(offset))
+        self.instr.write('C' + str(channel) + ':BSWV OFST,' + ('+' if offset >= 0 else '-') + str(abs(offset)))  # sign is required by the SDG
 
         self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
 
@@ -1484,10 +1502,31 @@ class DC_KEITHLEY_2450: #developer: Jeppe Surrow — 2450-specific SCPI commands
     def GetIntegrationtime(self):
         return self.__integtime__
 
+    def SetHighZVoltmeter(self, vlim=20, nplc=1.0):
+        # High-impedance DC monitor (e.g. for the DC port of the bias tee): source 0 A, measure voltage.
+        # The 2450 voltmeter input is >10 GOhm, so (almost) no current flows through the bias tee inductors.
+        # NEVER source voltage into the bias tee DC port.  Output-off state is set to high impedance.
+        # ATTENTION: performs *RST (via SetMode). Output is left OFF; call SwitchOn() afterwards.
+        self.SetMode('Current')                       # *RST, source current, measure voltage, 2-wire
+        self.instr.write(':SOUR:CURR 0')
+        self.instr.write(':SOUR:CURR:VLIM ' + str(vlim))
+        self.instr.write(':SENS:VOLT:RANG:AUTO ON')
+        self.instr.write(':SENS:VOLT:NPLC ' + str(nplc))
+        self.__integtime__ = nplc
+        self.instr.write(':OUTP:SMOD HIMP')           # output-off state: high impedance
+        self.AssertHighZ()
+        print('Keithley 2450: HIGH-IMPEDANCE voltmeter mode (source 0 A, measure V, Vlim = %g V).' % vlim)
+
+    def AssertHighZ(self):
+        # Raises if the 2450 is not sourcing 0 A. Call before connecting/enabling output on the bias tee.
+        func = self.instr.query(':SOUR:FUNC?').strip().upper()
+        amps = float(self.instr.query(':SOUR:CURR?'))
+        if not func.startswith('CURR') or amps != 0.0:
+            raise RuntimeError('Keithley 2450 is NOT in 0 A high-impedance mode (SOUR:FUNC=%s, SOUR:CURR=%g)' % (func, amps))
 
 
 #ELECTRICAL SPECTRUM ANALYZERS:#
-class ESA_RS_FSV30: 
+class ESA_RS_FSW50:  # R&S FSW50 (USB product ID 0x00CB); formerly misnamed ESA_RS_FSV30
 
     def __init__(self,
                  channel=20,
@@ -1518,7 +1557,7 @@ class ESA_RS_FSV30:
         self.instr.write_termination = '\n'
         self.instr.timeout = 10000
         #if alive != 0:
-            #print('ESA_RS_FSV is alive')
+            #print('ESA_RS_FSW50 is alive')
             #print(alive)
 
         self.spanFreq = spanFreq
@@ -1619,11 +1658,24 @@ class ESA_RS_FSV30:
 
         return [dataOut.tolist(),freqAxis.tolist()]  #Return x and y values, corresponding to frequency and power/res respectively
 
+    def SetCoupling(self, coupling='DC'):
+        # RF input coupling (FSW default is AC). WARNING (R&S FSW manual): with DC coupling you must protect the
+        # input from DC voltage yourself - see the data sheet for the maximum DC voltage. AC coupling distorts very low frequencies.
+        coupling = str(coupling).upper()
+        if coupling not in ('AC', 'DC'):
+            raise AttributeError("SetCoupling requires 'AC' or 'DC', got '%s'" % coupling)
+        self.instr.write('INP:COUP ' + coupling)
+
+    def GetCoupling(self):
+        return self.instr.query('INP:COUP?').strip().upper()
+
     def ContDisplay(self):
         self.instr.write('INIT:CONT ON')
 
     def CloseConnection(self):
         self.instr.close()
+
+ESA_RS_FSV30 = ESA_RS_FSW50   # backward-compatible alias for old scripts
 
 #%%
 
@@ -2539,6 +2591,150 @@ class RTO1024:
             pass
         with open(local_path, 'wb') as f:
             f.write(raw)
+
+    def closeConnection(self):
+        self.instr.close()
+
+# =============================================================================
+# Siglent SDS2000X-E Oscilloscope (e.g. SDS2352X-E)
+# =============================================================================
+
+class SCOPE_SIGLENT_SDS:  #developer: Jeppe Surrow. Commands from the Siglent SDS programming guide PG01-E02B
+    """Siglent SDS2000X-E oscilloscope over LAN (VXI-11) or any VISA resource string.
+
+    Waveforms are read as raw 8-bit codes (C1:WF? DAT2) and converted with
+        volt = code * vdiv / 25 - offset
+    The input is 1 MOhm: terminate the signal with an external 50 ohm feed-through
+    if a 50 ohm load is required.
+
+    Parameters
+    ----------
+    IP_address : str
+        Instrument IP address (used if resource is None).
+    resource : str
+        Full VISA resource string, e.g. 'USB0::0xF4EC::...::INSTR'.
+    """
+
+    # discrete settings from the programming guide (TIME_DIV: 1 ns ... 100 s, VOLT_DIV: 500 uV ... 10 V)
+    TDIV_LIST = [m * 10.0 ** e for e in range(-9, 2) for m in (1, 2, 5)] + [100.0]
+    VDIV_LIST = [m * 10.0 ** e for e in range(-4, 1) for m in (1, 2, 5)][2:] + [10.0]
+
+    def __init__(self, IP_address=None, resource=None):
+        rm = visa.ResourceManager()
+        if resource is None:
+            if IP_address is None:
+                raise ValueError('Give IP_address or resource')
+            resource = 'TCPIP0::' + IP_address + '::inst0::INSTR'
+        self.instr = rm.open_resource(resource)
+        self.instr.timeout = 30000
+        self.instr.chunk_size = 20 * 1024 * 1024   # waveform blocks are large (default 20 kB)
+        self.instr.write('CHDR OFF')                # numbers only, no header/units in replies
+        alive = self.instr.query('*IDN?').strip()
+        if alive:
+            print('SCOPE_SIGLENT_SDS is alive')
+            print(alive)
+        self.idn = alive
+        self.vdiv = {}
+        self.offset = {}
+
+    @staticmethod
+    def _num(text):
+        """First number in a reply, with optional k/K/M/G suffix (e.g. '5.00E+08', '1.00GSa/s', '140K')."""
+        m = re.search(r'([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*([kKMG]?)', str(text))
+        if not m:
+            raise ValueError('No number in reply: %r' % (text,))
+        return float(m.group(1)) * {'': 1.0, 'k': 1e3, 'K': 1e3, 'M': 1e6, 'G': 1e9}[m.group(2)]
+
+    @classmethod
+    def nearest_vdiv(cls, vdiv, round_up=True):
+        """Smallest allowed V/div >= vdiv (or the nearest below if round_up is False)."""
+        vals = [v for v in cls.VDIV_LIST if (v >= vdiv * 0.9999 if round_up else v <= vdiv * 1.0001)]
+        return (min(vals) if round_up else max(vals)) if vals else (cls.VDIV_LIST[-1] if round_up else cls.VDIV_LIST[0])
+
+    @classmethod
+    def nearest_tdiv(cls, tdiv):
+        """Smallest allowed time/div >= tdiv."""
+        vals = [t for t in cls.TDIV_LIST if t >= tdiv * 0.9999]
+        return min(vals) if vals else cls.TDIV_LIST[-1]
+
+    def SetChannel(self, channel=1, coupling='D1M', vdiv=0.1, offset=0.0, bandwidth_limit=False, attenuation=1):
+        # coupling: 'A1M','D1M' (1 MOhm AC/DC) or 'GND'; 50 ohm options (A50/D50) only exist on some models
+        ch = 'C' + str(channel)
+        self.instr.write(ch + ':TRA ON')
+        self.instr.write(ch + ':ATTN ' + str(attenuation))
+        self.instr.write(ch + ':CPL ' + coupling)
+        got = self.instr.query(ch + ':CPL?').strip()
+        if coupling.upper() not in got.upper():
+            raise RuntimeError('Scope coupling is "%s", wanted %s' % (got, coupling))
+        self.instr.write('BWL ' + ch + ',' + ('ON' if bandwidth_limit else 'OFF'))
+        self.SetVertical(channel, vdiv, offset)
+
+    def SetVertical(self, channel=1, vdiv=0.1, offset=0.0):
+        ch = 'C' + str(channel)
+        self.instr.write(ch + ':VDIV ' + str(vdiv))
+        self.instr.write(ch + ':OFST ' + str(offset))
+        self.vdiv[channel] = self._num(self.instr.query(ch + ':VDIV?'))
+        self.offset[channel] = self._num(self.instr.query(ch + ':OFST?'))
+        return self.vdiv[channel], self.offset[channel]
+
+    def SetTimebase(self, tdiv, memory_depth=None):
+        self.instr.write('TDIV ' + ('%g' % tdiv) + 'S')
+        if memory_depth is not None:
+            self.instr.write('MSIZ ' + str(memory_depth))
+        self.instr.write('TRDL 0S')
+        self.instr.write('ACQW SAMPLING')
+        self.tdiv = self._num(self.instr.query('TDIV?'))
+        return self.tdiv
+
+    def GetAcquisitionInfo(self, channel=1):
+        sara = self._num(self.instr.query('SARA?'))
+        npts = self._num(self.instr.query('SANU? C' + str(channel)))
+        return {'sample_rate_Sa_s': sara, 'points': npts, 'tdiv': self._num(self.instr.query('TDIV?')),
+                'memory_depth': self.instr.query('MSIZ?').strip()}
+
+    def Run(self):
+        self.instr.write('TRMD AUTO')
+
+    def Stop(self):
+        self.instr.write('STOP')
+
+    def Acquire(self, channel=1, wait=None):
+        """Free-run, stop, and read the stopped record of one channel.
+
+        Returns codes (int8), vdiv, offset, dt (s/sample). Trigger position is irrelevant for
+        spectra, so no trigger condition is needed (AUTO mode).
+        """
+        if wait is None:
+            wait = max(0.3, 3 * 14 * self._num(self.instr.query('TDIV?')))
+        self.instr.write('TRMD AUTO')
+        time.sleep(wait)
+        self.instr.write('STOP')
+        self.instr.query('*OPC?')
+        return self.ReadStopped(channel)
+
+    def ReadStopped(self, channel=1):
+        ch = 'C' + str(channel)
+        vdiv = self._num(self.instr.query(ch + ':VDIV?'))
+        ofst = self._num(self.instr.query(ch + ':OFST?'))
+        sara = self._num(self.instr.query('SARA?'))
+        self.instr.write('WFSU SP,1,NP,0,FP,0')       # all points
+        self.instr.write(ch + ':WF? DAT2')
+        raw = self.instr.read_raw()
+        # reply: [header]#<n><n-digit length><data...>\n\n  (header is absent/present depending on CHDR)
+        i = raw.index(b'#')
+        ndig = int(raw[i + 1:i + 2])
+        length = int(raw[i + 2:i + 2 + ndig])
+        data = raw[i + 2 + ndig:i + 2 + ndig + length]
+        if len(data) != length:
+            raise RuntimeError('Waveform block truncated: got %d of %d bytes' % (len(data), length))
+        codes = np.frombuffer(data, dtype=np.int8)   # two's complement 8-bit
+        return codes, vdiv, ofst, 1.0 / sara
+
+    def getWaveform(self, channel=1):
+        """Acquire and return (time_axis [s], voltage [V]); same call signature as RTO1024.getWaveform."""
+        codes, vdiv, ofst, dt = self.Acquire(channel)
+        volt = codes.astype(float) * vdiv / 25.0 - ofst
+        return np.arange(len(volt)) * dt, volt
 
     def closeConnection(self):
         self.instr.close()
