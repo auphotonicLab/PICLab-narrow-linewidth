@@ -85,10 +85,10 @@ SPECTRA_FREQS_HZ = [1e3, 1e5, 1e7]   # tones shown in the _spectra / _fftcheck f
 SHOW_PLOTS = False                 # also open the plot windows at the end of each stage
 
 # --- signal ---
-FREQUENCIES_HZ = sorted({m * 10 ** e for e in range(3, 7) for m in (1, 2, 3, 5, 7)} | {1e7})   # 1 kHz ... 10 MHz
+FREQUENCIES_HZ = sorted({m * 10 ** e for e in range(3, 7) for m in (1, 2, 3, 4, 5, 6, 7, 8, 9)} | {1e7})   # 1 kHz ... 10 MHz
 VPP = 0.5                         # sine amplitude, Vpp into 50 ohm (-2 dBm). Keep small, like a PD AC signal.
 # PD output into 50 ohm (PDA05CF2 / PDA10A2: 0-5 V). 0 = clean AC. DC + VPP/2 must stay <= PD_MAX_50OHM_V.
-PD_DC_LEVELS_V = [0, 0.5, 1, 2, 3, 4, 4.5]
+PD_DC_LEVELS_V = [0, 0.5, 1, 2, 2.5, 3, 3.5]
 PD_MAX_50OHM_V = 5.0              # PD / SDG limit into 50 ohm
 PD_MAX_HIZ_V = 10.0               # PD saturation into Hi-Z
 DC_AT_TEE_FACTOR = 2.0            # DC at bias tee DC port = factor x SDG offset
