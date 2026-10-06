@@ -64,7 +64,8 @@ import bias_tee_utils as bt
 # =============================================================================
 # Settings
 # =============================================================================
-STAGES_TO_RUN = [3]               # any of 1, 2, 3 (run in this order). Stages 2/3 need the Keithley.
+STAGES_TO_RUN = [3]            # e.g. [1], [1,2], [1,2,3]. Run in order; stages 2/3 need the Keithley.
+                                  # Running [1,2] together lets stage 2 reuse the stage 1-C reference (no re-wiring).
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 
 # --- instruments ---
@@ -81,6 +82,7 @@ SAVE_FOLDER = r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Bias_tee'
 DEFAULT_SAVE_LABEL = ''           # pre-filled text in the label pop-up
 SAVE_SCREENSHOTS = True           # receiver screenshots (PNG, also embedded in the h5)
 SCREENSHOT_FREQS_HZ = [1e3, 1e5, 1e7]   # take a screenshot at these tones (set [] for none)
+SCREENSHOT_SETTLE_S = 0.5        # wait before screenshot so scope FFT display has time to update
 SPECTRA_FREQS_HZ = [1e3, 1e5, 1e7]   # tones shown in the _spectra / _fftcheck figures (must be in FREQUENCIES_HZ)
 SHOW_PLOTS = False                 # also open the plot windows at the end of each stage
 

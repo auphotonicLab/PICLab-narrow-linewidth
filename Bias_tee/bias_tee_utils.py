@@ -232,12 +232,14 @@ class Setup:
         self.rx_text = ('scope CH%d (50 ohm input)' % cfg.SCOPE_CH
                         if self.is_scope else RECEIVER_NAMES[self.kind])
         self.last_vdiv = None
+        self.scope_ofst_v = 0.0       # scope channel OFST (V) for DC-present measurements; reset to 0 for AC groups
         self.last_snr = np.nan
         self.run_folder = None
         self.base_name = None
         self.stage_screenshots = []
         self.screenshots_ok = bool(cfg.SAVE_SCREENSHOTS)
         self.used_keys = set()
+        self.prior_stage_results = {}          # stage N result stored here after run_stage completes
         self.tee = Tee()                       # console log -> _log.txt and h5
         self.log_idx = self.prompt_idx = 0
         self.stage_settings = {}
@@ -414,9 +416,10 @@ class Setup:
         tdiv = sc.nearest_tdiv(cfg.SCOPE_NCYC / freq / 14.0)
         sc.SetTimebase(tdiv, cfg.SCOPE_MEMORY)
         vdiv = self.last_vdiv or sc.nearest_vdiv(vpp / 6.0)
+        current_ofst_v = self.scope_ofst_v   # local copy; adjusted each iteration to centre the DC
         lo, hi = cfg.SCOPE_PP_CODES
         for _ in range(12):                                  # vertical auto-scale (8 bit => keep signal large)
-            sc.SetVertical(cfg.SCOPE_CH, vdiv, 0.0)
+            sc.SetVertical(cfg.SCOPE_CH, vdiv, current_ofst_v)
             for _retry in range(3):
                 codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
                 if len(codes) > 0:
@@ -425,6 +428,10 @@ class Setup:
                       % (sc.Diagnose(cfg.SCOPE_CH), getattr(sc, 'acq_done', '?')))
             if len(codes) == 0:
                 raise RuntimeError('Scope returned empty waveform after 3 retries at %.0f Hz  scope state: %s' % (freq, sc.Diagnose(cfg.SCOPE_CH)))
+            # Centre the waveform in the ADC by correcting for any DC offset
+            mid = (int(codes.max()) + int(codes.min())) / 2.0
+            if abs(mid) > 10:
+                current_ofst_v -= mid * vdiv_rb / 25.0
             pp = int(codes.max()) - int(codes.min())
             clipped = bool(codes.max() >= 126 or codes.min() <= -127)
             if clipped:
@@ -436,7 +443,7 @@ class Setup:
                     new = sc.nearest_vdiv(vdiv_rb * pp / 150.0)   # aim at ~6 div pk-pk
             else:
                 break
-            if new == vdiv_rb:
+            if new == vdiv_rb and abs(mid) <= 10:
                 break
             vdiv = new
         self.last_vdiv = vdiv_rb
@@ -466,11 +473,14 @@ class Setup:
             print('  warning: spectral peak at %.1f Hz, expected %.1f Hz' % (sp['f_peak'], freq))
         band = sp['f'] <= 20 * freq                          # spectrum of the last record up to 20 x f0
         self.last_snr = sp['snr_db']
+        codes_avg = np.mean([r.astype(float) for r in records], axis=0)
+        dc_from_scope_V = float(np.mean(codes_avg)) * (vdiv_rb / 25.0) - ofst
         return {'p_dbm': p_dbm, 'snr_db': sp['snr_db'], 'records': records, 'vdiv': vdiv_rb, 'ofst': ofst, 'dt': dt,
                 'tdiv': info['tdiv'], 'sample_rate': info['sample_rate_Sa_s'], 'pp_codes': pp, 'clipped': clipped,
                 'f_peak': sp['f_peak'], 'h2_dbc': sp['h2_dbc'], 'h3_dbc': sp['h3_dbc'],
                 'spec_f': sp['f'][band].astype(np.float32),
-                'spec_dbm': sp['dbm'][band].astype(np.float32)}
+                'spec_dbm': sp['dbm'][band].astype(np.float32),
+                'dc_from_scope_V': dc_from_scope_V}
 
     def read_point_esa(self, freq):
         span, rbw = esa_settings(freq)
@@ -496,6 +506,7 @@ class Setup:
         os.makedirs(shot_dir, exist_ok=True)
         path = os.path.join(shot_dir, '%s_%s.png' % (safe_name(tag), self.kind))
         try:
+            time.sleep(getattr(self.cfg, 'SCREENSHOT_SETTLE_S', 2.0))
             save_screenshot_png(self.recv, path)
         except Exception as e:
             print('  warning: screenshot failed (%s) - no more screenshots in this run.' % e)
@@ -552,7 +563,8 @@ class Setup:
         freqs = np.array(cfg.FREQUENCIES_HZ, float)
         nan = np.full(len(freqs), np.nan)
         res = {'label': label, 'key': key, 'offset': offset, 'vpp': vpp, 'coupling': self.rx_coupling,
-               'freq': freqs, 'p_dbm': nan.copy(), 'v_dc': nan.copy(), 'snr_db': nan.copy(),
+               'freq': freqs, 'p_dbm': nan.copy(), 'v_dc': nan.copy(), 'v_scope_dc': nan.copy(),
+               'snr_db': nan.copy(),
                'h2_dbc': nan.copy(), 'h3_dbc': nan.copy(), 'afg_readback': [None] * len(freqs),
                'points': [None] * len(freqs), 'screenshots': [], 't_start': datetime.now().isoformat()}
         fmin = MIN_FREQ_HZ[self.kind]
@@ -596,6 +608,7 @@ class Setup:
                 res['snr_db'][i] = pt['snr_db']
                 res['h2_dbc'][i] = pt.get('h2_dbc', np.nan)
                 res['h3_dbc'][i] = pt.get('h3_dbc', np.nan)
+                res['v_scope_dc'][i] = pt.get('dc_from_scope_V', np.nan)
                 snr = ('  SNR %.0f dB  H2 %.0f dBc  H3 %.0f dBc' % (pt['snr_db'], pt['h2_dbc'], pt['h3_dbc'])) if self.is_scope else ''
                 print('  [%s] %10.0f Hz  P = %8.2f dBm (exp. %.2f)%s%s' % (label, f, pt['p_dbm'], expected_dbm(vpp), snr, msg))
                 if self.want_screenshot(f):
@@ -684,7 +697,8 @@ def _plot_live(cfg, sweeps, title):
         for i, r in enumerate(sweeps):
             c = CATEGORICAL[i % len(CATEGORICAL)]
             m = MARKERS[i % len(MARKERS)]
-            ls = '--' if r.get('isolated') else '-'
+            grp = r.get('sweep_group', 'tee_iso' if r.get('isolated') else 'tee_block')
+            ls = _GROUP_LS.get(grp, '-')
             ax.plot(r['freq'], r['p_dbm'], ls, color=c, marker=m, ms=4, lw=1.4, label=r['label'])
         ax.axhline(expected_dbm(cfg.VPP), color=MUTED, ls=':', lw=1.0,
                    label='ideal (%.2f dBm)' % expected_dbm(cfg.VPP))
@@ -726,18 +740,30 @@ def stage1(S):
         sweeps.append(C)
         pairs.append((C['key'], A['key']))
         _plot_live(cfg, sweeps, _title1)
+
     return {'stage': 1, 'title': 'Stage 1: DC block (EF500)', 'sweeps': sweeps, 'pairs': pairs,
             'monitor_dc': False, 'color_mode': 'categorical',
             'what': 'DC block insertion loss (relative to direct)'}
 
 
 def stage2(S):
-    """Bias tee with pure AC; reference = DC block only."""
+    """Bias tee with pure AC; reference = DC block only (stage 1-C reused when available).
+
+    Run STAGES_TO_RUN = [1, 2] together so stage 1-C is in memory and no re-wiring is needed.
+    """
     cfg = S.cfg
-    S.set_rx_coupling('AC')
     _title2 = 'Stage 2: bias tee, pure AC'
-    ask('STAGE 2-R (reference, no bias tee)\n  SDG CH%d  ->  EF500  ->  %s (AC-coupled)' % (cfg.AFG_CH, S.rx_text))
-    R = S.sweep('ref: block only')
+    stage1_res = S.prior_stage_results.get(1)
+    stage1_C = next((sw for sw in stage1_res['sweeps'] if sw.get('coupling') == 'AC'
+                     and 'block' in sw['label']), None) if stage1_res else None
+    if stage1_C is not None:
+        print('Stage 2: reusing stage 1-C sweep (%r) as reference — no re-wiring needed.' % stage1_C['label'])
+        R = stage1_C
+        S.set_rx_coupling('AC')
+    else:
+        S.set_rx_coupling('AC')
+        ask('STAGE 2-R (reference, no bias tee)\n  SDG CH%d  ->  EF500  ->  %s (AC-coupled)' % (cfg.AFG_CH, S.rx_text))
+        R = S.sweep('ref: block only')
     _plot_live(cfg, [R], _title2)
     S.keithley.AssertHighZ()
     ask('STAGE 2-T (bias tee, pure AC)\n' + tee_wiring_text(cfg, S.rx_text))
@@ -751,29 +777,84 @@ def stage2(S):
 def stage3(S):
     """Bias tee with AC + PD-like DC levels; reference = the 0 V sweep.
 
-    For scope only: also runs isolation sweeps (bias tee AC port direct to scope, no EF500),
-    so the bias tee AC-path behaviour is tested both with and without the DC block.
+    For scope only: also runs two no-tee reference sections (direct DC-coupled and EF500 AC-coupled),
+    then the tee+EF500 section, then the tee isolation section (bias tee AC port direct to scope, DC-coupled).
+    Each sweep is tagged with sweep_group: 'ref_dc', 'ref_ac', 'tee_block', or 'tee_iso'.
     """
     cfg = S.cfg
-    S.set_rx_coupling('AC')
-    if S.kind == 'ssa':
-        print('NOTE: SSA3021X - make sure its input is AC coupled / rated for the DC block output.')
-    ask('STAGE 3 (bias tee, AC + PD-like DC)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V) +
-        '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
-        % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
     _title3 = 'Stage 3: bias tee, AC + DC'
     sweeps = []
-    for lvl in cfg.PD_DC_LEVELS_V:
-        sweeps.append(S.sweep('DC %.2f V (tee %.2f V)' % (lvl, cfg.DC_AT_TEE_FACTOR * lvl),
-                              offset=lvl, monitor_dc=True))
-        S.afg_output_off()
-        _plot_live(cfg, sweeps, _title3)
-    base = sweeps[0]
-    pairs = [(r['key'], base['key']) for r in sweeps[1:]]
+    pairs = []
 
     if S.is_scope:
-        # Scope-only: remove EF500, connect bias tee AC out directly to scope (DC-coupled).
-        # Measures the true AC-path insertion loss of the bias tee alone.
+        # --- Scope-only reference A: SDG -> scope, DC-coupled, no EF500, no bias tee ---
+        S.set_rx_coupling('DC')
+        ask('STAGE 3-REF-DC (reference, no EF500, no bias tee)\n'
+            '  SDG CH%d  ->  %s (DC-coupled, 50 ohm)\n'
+            '  Scope sees the raw AC+DC signal (no external filtering).\n'
+            '  Levels (SDG offset into 50 ohm): %s V'
+            % (cfg.AFG_CH, S.rx_text, list(cfg.PD_DC_LEVELS_V)))
+        ref_dc_sweeps = []
+        for lvl in cfg.PD_DC_LEVELS_V:
+            S.scope_ofst_v = -lvl
+            sw = S.sweep('ref direct DC %.2f V' % lvl, offset=lvl)
+            S.scope_ofst_v = 0.0
+            sw['sweep_group'] = 'ref_dc'
+            ref_dc_sweeps.append(sw)
+            S.afg_output_off()
+            _plot_live(cfg, ref_dc_sweeps, _title3)
+        sweeps.extend(ref_dc_sweeps)
+        ref_dc_base = ref_dc_sweeps[0]
+        pairs.extend([(r['key'], ref_dc_base['key']) for r in ref_dc_sweeps[1:]])
+
+        # --- Scope-only reference B: SDG -> EF500 -> scope, DC-coupled (EF500 blocks DC), no bias tee ---
+        S.set_rx_coupling('DC')
+        ask('STAGE 3-REF-AC (reference, EF500 DC block, no bias tee)\n'
+            '  SDG CH%d  ->  EF500  ->  %s (DC-coupled)\n'
+            '  EF500 blocks DC; scope sees pure AC regardless of offset.\n'
+            '  Levels (SDG offset into 50 ohm): %s V'
+            % (cfg.AFG_CH, S.rx_text, list(cfg.PD_DC_LEVELS_V)))
+        ref_ac_sweeps = []
+        for lvl in cfg.PD_DC_LEVELS_V:
+            sw = S.sweep('ref EF500 DC %.2f V' % lvl, offset=lvl)
+            sw['sweep_group'] = 'ref_ac'
+            ref_ac_sweeps.append(sw)
+            S.afg_output_off()
+            _plot_live(cfg, sweeps + ref_ac_sweeps, _title3)
+        sweeps.extend(ref_ac_sweeps)
+        ref_ac_base = ref_ac_sweeps[0]
+        pairs.extend([(r['key'], ref_ac_base['key']) for r in ref_ac_sweeps[1:]])
+
+    # --- Bias tee + EF500 ---
+    # Scope: DC-coupled (EF500 blocks the DC; DC coupling matches tee_iso for direct comparison).
+    # ESA: AC-coupled (DC on an ESA input risks damage; stage 3 is not recommended for ESAs).
+    if S.kind == 'ssa':
+        print('NOTE: SSA3021X - make sure its input is AC coupled / rated for the DC block output.')
+    if not S.is_scope:
+        ask('*** ESA SAFETY CHECK ***\n'
+            '  The EF500 DC block MUST be connected between the bias tee AC port and the ESA input.\n'
+            '  Without it, the DC offset will reach the ESA input and may damage it.\n'
+            '  Confirm the EF500 is in place before continuing.')
+        ask('*** CONFIRM AGAIN ***\n'
+            '  Double-check: EF500 DC block is between the bias tee AC out and the ESA input. OK?')
+    S.set_rx_coupling('DC')
+    ask('STAGE 3 (bias tee + EF500)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V) +
+        '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
+        % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
+    tee_block_sweeps = []
+    for lvl in cfg.PD_DC_LEVELS_V:
+        sw = S.sweep('DC %.2f V (tee %.2f V)' % (lvl, cfg.DC_AT_TEE_FACTOR * lvl),
+                     offset=lvl, monitor_dc=True)
+        sw['sweep_group'] = 'tee_block'
+        tee_block_sweeps.append(sw)
+        S.afg_output_off()
+        _plot_live(cfg, (sweeps if S.is_scope else []) + tee_block_sweeps, _title3)
+    sweeps.extend(tee_block_sweeps)
+    tee_base = tee_block_sweeps[0]
+    pairs.extend([(r['key'], tee_base['key']) for r in tee_block_sweeps[1:]])
+
+    if S.is_scope:
+        # --- Scope-only: bias tee AC port direct to scope, DC-coupled, no EF500 ---
         S.set_rx_coupling('DC')
         ask('STAGE 3 (bias tee isolation, no EF500)\n'
             + tee_isolation_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V)
@@ -782,18 +863,19 @@ def stage3(S):
         iso_sweeps = []
         for lvl in cfg.PD_DC_LEVELS_V:
             sw = S.sweep('no block, DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
-            sw['isolated'] = True
+            sw['sweep_group'] = 'tee_iso'
+            sw['isolated'] = True   # keep for backward compat with old load_stage_result
             iso_sweeps.append(sw)
             S.afg_output_off()
             _plot_live(cfg, sweeps + iso_sweeps, _title3)
-        iso_base = iso_sweeps[0]
         sweeps.extend(iso_sweeps)
+        iso_base = iso_sweeps[0]
         pairs.extend([(r['key'], iso_base['key']) for r in iso_sweeps[1:]])
 
     return {'stage': 3, 'title': 'Stage 3: bias tee, AC + DC', 'sweeps': sweeps,
             'pairs': pairs,
             'monitor_dc': True, 'color_mode': 'sequential',
-            'what': 'Change of AC response vs the 0 V sweep'}
+            'what': 'Change of AC response vs the 0 V sweep of each group'}
 
 
 STAGES = {1: stage1, 2: stage2, 3: stage3}
@@ -852,24 +934,25 @@ def _seq_colors(n):
     return ['#%02x%02x%02x' % tuple(int(round(v)) for v in (a + (b - a) * x)) for x in t]
 
 
-def _series_styles(res):
-    """key -> (colour, marker, linestyle).  Categorical = identity; sequential = DC level (light -> dark).
+_GROUP_LS = {'ref_dc': ':', 'ref_ac': '-.', 'tee_block': '-', 'tee_iso': '--', '': '-'}
 
-    In sequential mode, isolation sweeps (sw['isolated'] = True) use the same colour ramp as the
-    corresponding EF500 sweeps but with dashed lines so the two groups are visually distinct.
+
+def _series_styles(res):
+    """key -> (colour, marker, linestyle).  Categorical = per-sweep identity; sequential = DC level (light -> dark).
+
+    In sequential mode all groups share the same colour ramp keyed by SDG offset (same DC level = same colour).
+    Line style distinguishes the group: ref_dc=':', ref_ac='-.', tee_block='-', tee_iso='--'.
     """
     sty = {}
     if res['color_mode'] == 'sequential':
-        refs = {rk for _, rk in res['pairs']}
-        samples_block = [r for r in res['sweeps'] if r['key'] not in refs and not r.get('isolated')]
-        samples_iso   = [r for r in res['sweeps'] if r['key'] not in refs and r.get('isolated')]
-        for r in res['sweeps']:
-            if r['key'] in refs:
-                sty[r['key']] = (INK2, 'o', ':' if r.get('isolated') else '--')
-        for r, c, m in zip(samples_block, _seq_colors(len(samples_block)), MARKERS * 2):
-            sty[r['key']] = (c, m, '-')
-        for r, c, m in zip(samples_iso, _seq_colors(len(samples_iso)), MARKERS * 2):
-            sty[r['key']] = (c, m, '--')
+        # Build a colour for every unique DC level in order
+        all_offsets = sorted(set(r['offset'] for r in res['sweeps']))
+        offset_color = {o: c for o, c in zip(all_offsets, _seq_colors(len(all_offsets)))}
+        for i, r in enumerate(res['sweeps']):
+            grp = r.get('sweep_group', 'tee_iso' if r.get('isolated') else 'tee_block')
+            ls = _GROUP_LS.get(grp, '-')
+            c = offset_color[r['offset']]
+            sty[r['key']] = (c, MARKERS[i % len(MARKERS)], ls)
     else:
         for i, r in enumerate(res['sweeps']):
             sty[r['key']] = (CATEGORICAL[i % len(CATEGORICAL)], MARKERS[i % len(MARKERS)], '-')
@@ -979,29 +1062,39 @@ def make_spectra_report(cfg, res, base_path, show=False):
         for ri, i in enumerate(rows):
             f0 = float(cfg.FREQUENCIES_HZ[i])
             scale, unit = _hz_unit(f0)
+            no_time_domain = True   # set False once a time-domain trace is plotted
             for r in res['sweeps']:
                 pt = r['points'][i]
                 if pt is None:
                     continue
                 c, m, ls = sty[r['key']]
                 if scope:
-                    v = pt['records'][0].astype(float) * pt['vdiv'] / 25.0 - pt['ofst']
-                    t = np.arange(len(v)) * pt['dt']
-                    k = min(len(v), int(round(3.0 / f0 / pt['dt'])))      # first 3 periods
-                    axes[ri, 0].plot(t[:k] * 1e6, v[:k], color=c, lw=1.0, label=r['label'])
+                    if pt['records']:   # raw codes available (live run); absent when loaded from H5
+                        v = pt['records'][0].astype(float) * pt['vdiv'] / 25.0 - pt['ofst']
+                        t = np.arange(len(v)) * pt['dt']
+                        k = min(len(v), int(round(3.0 / f0 / pt['dt'])))      # first 3 periods
+                        axes[ri, 0].plot(t[:k] * 1e6, v[:k], color=c, lw=1.0, label=r['label'])
+                        no_time_domain = False
                     axes[ri, 1].plot(pt['spec_f'] / scale, pt['spec_dbm'], color=c, lw=1.0, label=r['label'])
                 else:
                     axes[ri, 0].plot((pt['trace_f'] - pt['center_hz']) / 1e3, pt['trace_dbm'], color=c, lw=1.0, label=r['label'])
             ax_t = axes[ri, 0]
             if scope:
+                if no_time_domain:
+                    ax_t.text(0.5, 0.5, 'time series not stored\n(reprocessed from H5)',
+                              transform=ax_t.transAxes, ha='center', va='center', fontsize=8, color=MUTED)
                 ax_t.set_xlabel('Time (\u00b5s)')
                 ax_t.set_ylabel('Scope voltage (V)\n(f = %g %s)' % (f0 / scale, unit))
                 ax_s = axes[ri, 1]
                 ax_s.set_xscale('log')
                 ax_s.set_xlim(f0 / scale / 20, 20 * f0 / scale)
                 ax_s.set_xlabel('Frequency (%s)' % unit)
-                ax_s.set_ylabel('Spectrum (dBm into 50 \u03a9)')
-                ax_s.set_ylim(-120, 10)
+                ax_s.set_ylabel('Spectrum (dBm into 50 \u03a9)\n[flat-top window, amplitude per bin]')
+                # y-axis: cover the full dynamic range of the data, minimum -140 dBm
+                all_dbm = [pt['spec_dbm'] for r in res['sweeps']
+                           for pt in [r['points'][i]] if pt is not None and 'spec_dbm' in pt]
+                ymin = min(-140.0, min(float(d.min()) for d in all_dbm) - 5) if all_dbm else -140.0
+                ax_s.set_ylim(ymin, 10)
                 _style_axes(ax_s)
             else:
                 ax_t.set_xlabel('Offset from %g %s (kHz)' % (f0 / scale, unit))
@@ -1051,15 +1144,18 @@ def make_fft_check_report(cfg, res, base_path, show=False, max_rows=6):
             c, m, ls = sty[r['key']]
             axs.plot(pt['spec_f'] / scale, pt['spec_dbm'], color=c, lw=1.1)
             axs.set_xlim(0, 4.5 * f0 / scale)
-            axs.set_ylim(-110, 10)
+            ymin_fft = min(-110.0, float(pt['spec_dbm'].min()) - 5)
+            axs.set_ylim(ymin_fft, 10)
             axs.set_xlabel('Frequency (%s)' % unit)
-            axs.set_ylabel('Our FFT (dBm into 50 \u03a9)')
+            axs.set_ylabel('Our FFT (dBm into 50 \u03a9)\n[flat-top window, amplitude per bin]')
             _style_axes(axs)
             dbvrms = pt['p_dbm'] - 10 * np.log10(1e3 / 50.0)             # dBm into 50 ohm -> dBV(rms)
+            n_samp = pt.get('n_samples') or (pt['records'][0].size if pt['records'] else 0)
+            n_rec  = pt.get('n_records') or len(pt['records'])
             axs.text(0.98, 0.97, 'tone %.3f %s\nP = %.2f dBm  =  %.2f dBVrms\nH2 %.0f dBc, H3 %.0f dBc\n'
                      '%d samples, dt = %.3g s\nflat-top window, mean of %d records' %
                      (pt['f_peak'] / scale, unit, pt['p_dbm'], dbvrms, pt['h2_dbc'], pt['h3_dbc'],
-                      pt['records'][0].size, pt['dt'], len(pt['records'])),
+                      n_samp, pt['dt'], n_rec),
                      transform=axs.transAxes, ha='right', va='top', fontsize=8, color=INK2,
                      bbox=dict(boxstyle='round,pad=0.4', fc=SURFACE, ec=AXIS, lw=0.6))
         fig.suptitle(res['title'] + ' \u2013 scope FFT screenshot vs our FFT of the same record\n'
@@ -1233,11 +1329,13 @@ def write_stage_h5(path, cfg, S, label, res, comparisons):
             for k, v in (('label', r['label']), ('offset_V', r['offset']), ('vpp_V', r['vpp']),
                          ('expected_tee_dc_V', cfg.DC_AT_TEE_FACTOR * r['offset']),
                          ('receiver_coupling', r['coupling']), ('t_start', r['t_start']), ('t_end', r['t_end']),
-                         ('isolated', r.get('isolated', False))):
+                         ('isolated', r.get('isolated', False)),
+                         ('sweep_group', r.get('sweep_group', ''))):
                 g.attrs[k] = _attr(v)
             g.create_dataset('frequency_Hz', data=r['freq'])
             g.create_dataset('p_dbm', data=r['p_dbm'])
             g.create_dataset('v_dc_V', data=r['v_dc'])
+            g.create_dataset('v_scope_dc_V', data=r.get('v_scope_dc', np.full(len(r['freq']), np.nan)))
             g.create_dataset('snr_dB', data=r['snr_db'])
             if cfg.MEASUREMENT == 'scope':
                 g.create_dataset('h2_dBc', data=r['h2_dbc'])
@@ -1255,6 +1353,7 @@ def write_stage_h5(path, cfg, S, label, res, comparisons):
                 q.attrs['p_dbm'] = pt['p_dbm']
                 q.attrs['snr_dB'] = pt['snr_db']
                 q.attrs['v_dc_V'] = float(pt['v_dc'])
+                q.attrs['v_scope_dc_V'] = float(pt.get('dc_from_scope_V', np.nan))
                 if 'records' in pt:                                   # scope
                     for j, rec in enumerate(pt['records']):
                         q.create_dataset('adc_codes_%d' % j, data=np.asarray(rec, np.int8), **ckw)
@@ -1309,12 +1408,13 @@ def make_all_spectra_report(cfg, res, base_path, show=False):
     """
     if cfg.MEASUREMENT != 'scope':
         return
-    entries = []   # (f0, sweep_label, spec_f, spec_dbm, isolated)
+    entries = []   # (f0, sweep_group, spec_f, spec_dbm)
     for r in res['sweeps']:
+        grp = r.get('sweep_group', 'tee_iso' if r.get('isolated') else 'tee_block')
         for i, pt in enumerate(r['points']):
             if pt is None or 'spec_f' not in pt:
                 continue
-            entries.append((r['freq'][i], r['label'], pt['spec_f'], pt['spec_dbm'], r.get('isolated', False)))
+            entries.append((r['freq'][i], grp, pt['spec_f'], pt['spec_dbm']))
     if not entries:
         return
     all_f0 = sorted(set(e[0] for e in entries))
@@ -1324,20 +1424,22 @@ def make_all_spectra_report(cfg, res, base_path, show=False):
         fig, ax = plt.subplots(figsize=(11, 5))
         fig.patch.set_facecolor(SURFACE)
         seen_f0 = set()
-        for f0, sweep_lbl, sf, sd, iso in entries:
+        for f0, grp, sf, sd in entries:
             c = f_color[f0]
-            ls = '--' if iso else '-'
+            ls = _GROUP_LS.get(grp, '-')
             scale, unit = _hz_unit(f0)
             lbl = '%.4g %s' % (f0 / scale, unit) if f0 not in seen_f0 else None
             seen_f0.add(f0)
             ax.plot(sf, sd, ls, color=c, lw=0.7, alpha=0.65, label=lbl)
         ax.set_xscale('log')
+        ax.set_xlim(min(cfg.FREQUENCIES_HZ), max(cfg.FREQUENCIES_HZ))
         ax.set_xlabel('Frequency (Hz)')
         ax.set_ylabel('Power (dBm into 50 \u03a9)')
         ax.set_ylim(-110, 10)
         ax.set_title(res['title'] + ' \u2013 all FFT spectra overlaid\n'
-                     'colour = fundamental frequency (light \u2192 dark = low \u2192 high); '
-                     'solid = with EF500, dashed = no EF500', color=INK, fontsize=10)
+                     'colour = fundamental freq (light\u2192dark = low\u2192high); '
+                     'line style: ref_direct=\u00b7\u00b7\u00b7, ref_EF500=-\u00b7-, tee+EF500=\u2014, tee_iso=\u2013\u2013',
+                     color=INK, fontsize=10)
         ax.legend(fontsize=7, frameon=False, labelcolor=INK2, ncol=4)
         _style_axes(ax)
         fig.tight_layout()
@@ -1354,28 +1456,35 @@ def make_all_spectra_report(cfg, res, base_path, show=False):
 def make_dc_response_report(cfg, res, base_path, show=False):
     """Stage 3 only: AC power change vs DC bias level for a selection of frequencies.
 
-    Two subplots when isolation sweeps are present (with EF500 / without EF500).
+    One subplot per group (ref_dc, ref_ac, tee_block, tee_iso) — only present groups are shown.
     X-axis: SDG offset (V into 50 Ω).  Y-axis: ΔP vs 0 V sweep (dB).
     """
     if res.get('stage') != 3:
         return
-    block_sweeps = [r for r in res['sweeps'] if not r.get('isolated')]
-    iso_sweeps   = [r for r in res['sweeps'] if r.get('isolated')]
-    if not block_sweeps:
+
+    # Collect sweeps by group; fall back to isolated flag for old files
+    group_map = {}
+    for r in res['sweeps']:
+        grp = r.get('sweep_group', 'tee_iso' if r.get('isolated') else 'tee_block')
+        group_map.setdefault(grp, []).append(r)
+
+    _GROUP_ORDER = [('ref_dc',    'ref: direct (scope DC-coupled, no EF500, no tee)'),
+                    ('ref_ac',    'ref: EF500 only (no tee, DC blocked)'),
+                    ('tee_block', 'bias tee + EF500 DC block (AC-coupled)'),
+                    ('tee_iso',   'bias tee isolation (no EF500, DC-coupled)')]
+    groups = [(title, group_map[key]) for key, title in _GROUP_ORDER if key in group_map]
+    if not groups:
         return
 
+    # Representative frequencies: at most 10, spread across first group's finite points
+    first_sweeps = groups[0][1]
     freqs = np.array(cfg.FREQUENCIES_HZ)
-    # Pick a representative subset of frequencies (at most 10, spread across range)
-    idx_all = np.where(np.isfinite(block_sweeps[0]['p_dbm']))[0]
+    idx_all = np.where(np.isfinite(first_sweeps[0]['p_dbm']))[0]
     if len(idx_all) == 0:
         return
     step = max(1, len(idx_all) // 10)
     plot_idx = idx_all[::step]
     colors = _seq_colors(len(plot_idx))
-
-    groups = [('with EF500 DC block', block_sweeps)]
-    if iso_sweeps:
-        groups.append(('no EF500 (isolation)', iso_sweeps))
 
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, axes = plt.subplots(len(groups), 1, figsize=(9, 3.8 * len(groups) + 0.8),
@@ -1383,7 +1492,7 @@ def make_dc_response_report(cfg, res, base_path, show=False):
         fig.patch.set_facecolor(SURFACE)
         for ax, (grp_title, grp_sweeps) in zip(axes[:, 0], groups):
             dc = np.array([r['offset'] for r in grp_sweeps])
-            ref_p = grp_sweeps[0]['p_dbm']   # 0 V reference
+            ref_p = grp_sweeps[0]['p_dbm']   # 0 V sweep as reference
             for fi, c in zip(plot_idx, colors):
                 f0 = freqs[fi]
                 scale, unit = _hz_unit(f0)
@@ -1449,9 +1558,11 @@ def load_stage_result(h5_path):
                 'vpp':          float(g.attrs.get('vpp_V', 0.5)),
                 'coupling':     str(g.attrs.get('receiver_coupling', 'DC')),
                 'isolated':     bool(g.attrs.get('isolated', False)),
+                'sweep_group':  str(g.attrs.get('sweep_group', '')),
                 'freq':         freq,
                 'p_dbm':        g['p_dbm'][()] if 'p_dbm' in g else nan.copy(),
                 'v_dc':         g['v_dc_V'][()] if 'v_dc_V' in g else nan.copy(),
+                'v_scope_dc':   g['v_scope_dc_V'][()] if 'v_scope_dc_V' in g else nan.copy(),
                 'snr_db':       g['snr_dB'][()] if 'snr_dB' in g else nan.copy(),
                 'h2_dbc':       g['h2_dBc'][()] if 'h2_dBc' in g else nan.copy(),
                 'h3_dbc':       g['h3_dBc'][()] if 'h3_dBc' in g else nan.copy(),
@@ -1459,9 +1570,16 @@ def load_stage_result(h5_path):
                 'screenshots':  [],
                 'points':       [None] * len(freq),
             }
-            # Infer isolated from label for files written before the isolated flag was added
+            # Infer isolated/sweep_group from label for files written before these flags existed
             if not r['isolated'] and 'no block' in r['label']:
                 r['isolated'] = True
+            if not r['sweep_group']:
+                if 'no block' in r['label']:
+                    r['sweep_group'] = 'tee_iso'
+                elif r['isolated']:
+                    r['sweep_group'] = 'tee_iso'
+                else:
+                    r['sweep_group'] = 'tee_block'
             if 'points' in g:
                 for pt_key in sorted(g['points'].keys()):
                     idx = int(pt_key[1:])   # 'f07' -> 7
@@ -1483,7 +1601,9 @@ def load_stage_result(h5_path):
                             'tdiv':     float(q.attrs.get('tdiv_s', 2e-3)),
                             'pp_codes': int(q.attrs.get('pp_codes', 0)),
                             'clipped':  bool(q.attrs.get('clipped', False)),
-                            'records':  [],   # raw codes not loaded — not needed for plots
+                            'n_samples': int(q.attrs.get('n_samples', 0)),
+                            'n_records': int(q.attrs.get('n_records', 0)),
+                            'records':  [],   # raw codes not loaded — not needed for spectrum/report plots
                         })
                     elif 'trace_f_Hz' in q:        # ESA
                         pt.update({
@@ -1511,6 +1631,45 @@ def load_stage_result(h5_path):
         res = {'stage': stage, 'title': title, 'sweeps': sweeps, 'pairs': pairs,
                'monitor_dc': monitor_dc, 'color_mode': color_mode,
                'what': what_map.get(stage, '')}
+
+    # Recover on-disk screenshots so make_fft_check_report works when reprocessing.
+    # The live run saves PNGs to <base>_screenshots/ next to the H5 file.
+    # Tag format: <sweep_key>_<freq_Hz>Hz.png  e.g. direct_1000Hz.png
+    h5_dir = os.path.dirname(os.path.abspath(h5_path))
+    h5_stem = os.path.splitext(os.path.basename(h5_path))[0]
+    for sfx in ('_PARTIAL_data', '_data', ''):
+        if h5_stem.endswith(sfx):
+            h5_stem = h5_stem[:-len(sfx)] if sfx else h5_stem
+            break
+    ss_folder = os.path.join(h5_dir, h5_stem + '_screenshots')
+    if os.path.isdir(ss_folder):
+        by_key = {r['key']: r for r in res['sweeps']}
+        for png in sorted(os.listdir(ss_folder)):
+            if not png.lower().endswith('.png'):
+                continue
+            stem = png[:-4]                         # strip .png
+            try:
+                # strip optional trailing instrument tag e.g. '_scope', '_esa'
+                for _tag in ('_scope', '_fsw', '_ssa', '_esa'):
+                    if stem.endswith(_tag):
+                        stem = stem[:-len(_tag)]
+                        break
+                if not stem.endswith('Hz'):
+                    continue
+                skey, freq_str = stem.rsplit('_', 1)
+                if not freq_str.endswith('Hz'):
+                    continue
+                freq_hz = float(freq_str[:-2])      # strip 'Hz'
+                if skey not in by_key:
+                    continue
+                r = by_key[skey]
+                idxs = np.where(np.abs(r['freq'] - freq_hz) < 1.0)[0]
+                if len(idxs) == 0:
+                    continue
+                r['screenshots'].append({'index': int(idxs[0]), 'path': os.path.join(ss_folder, png)})
+            except Exception:
+                pass
+
     return cfg, res
 
 
@@ -1538,6 +1697,7 @@ def run_stage(S, stage, run_folder, label):
             print('  (partial data could not be saved: %s)' % e2)
         raise
     S.stage_settings['stage_end'] = S.settings_snapshot()
+    S.prior_stage_results[stage] = res
     comparisons = summarise(cfg, res)
     print('\nSaving ...')
     save_csv(cfg, os.path.join(run_folder, base + '_summary.csv'), res)
