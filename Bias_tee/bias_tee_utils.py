@@ -415,11 +415,16 @@ class Setup:
         cfg, sc = self.cfg, self.recv
         tdiv = sc.nearest_tdiv(cfg.SCOPE_NCYC / freq / 14.0)
         sc.SetTimebase(tdiv, cfg.SCOPE_MEMORY)
+        # SDS2352X-E offset range: ±2 V at ≤100 mV/div, ±20 V at 102 mV–1 V/div (manual p.60).
+        # Any vdiv > 100 mV/div (i.e. 200 mV/div) covers offsets up to ±20 V — sufficient for all
+        # DC levels used here.  Enforce this floor so the loop never drops back into the narrow range.
+        vdiv_floor = 0.2 if abs(self.scope_ofst_v) > 2.0 else 0.0
         vdiv = self.last_vdiv or sc.nearest_vdiv(vpp / 6.0)
-        current_ofst_v = self.scope_ofst_v   # local copy; adjusted each iteration to centre the DC
+        if vdiv < vdiv_floor:
+            vdiv = vdiv_floor
         lo, hi = cfg.SCOPE_PP_CODES
         for _ in range(12):                                  # vertical auto-scale (8 bit => keep signal large)
-            sc.SetVertical(cfg.SCOPE_CH, vdiv, current_ofst_v)
+            sc.SetVertical(cfg.SCOPE_CH, vdiv, self.scope_ofst_v)
             for _retry in range(3):
                 codes, vdiv_rb, ofst, dt = sc.Acquire(cfg.SCOPE_CH)
                 if len(codes) > 0:
@@ -428,10 +433,6 @@ class Setup:
                       % (sc.Diagnose(cfg.SCOPE_CH), getattr(sc, 'acq_done', '?')))
             if len(codes) == 0:
                 raise RuntimeError('Scope returned empty waveform after 3 retries at %.0f Hz  scope state: %s' % (freq, sc.Diagnose(cfg.SCOPE_CH)))
-            # Centre the waveform in the ADC by correcting for any DC offset
-            mid = (int(codes.max()) + int(codes.min())) / 2.0
-            if abs(mid) > 10:
-                current_ofst_v -= mid * vdiv_rb / 25.0
             pp = int(codes.max()) - int(codes.min())
             clipped = bool(codes.max() >= 126 or codes.min() <= -127)
             if clipped:
@@ -441,9 +442,11 @@ class Setup:
                     new = sc.nearest_vdiv(vpp / 6.0)        # near-zero pp: reset to vpp-based estimate
                 else:
                     new = sc.nearest_vdiv(vdiv_rb * pp / 150.0)   # aim at ~6 div pk-pk
+                if new < vdiv_floor:                         # DC offset range is the limit; accept current pp
+                    break
             else:
                 break
-            if new == vdiv_rb and abs(mid) <= 10:
+            if new == vdiv_rb:
                 break
             vdiv = new
         self.last_vdiv = vdiv_rb
