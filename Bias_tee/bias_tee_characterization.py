@@ -23,19 +23,26 @@ How to use
 Mimics a Thorlabs amplified photodetector (PDA05CF2, PDA10A2, ...) with the Siglent SDG6022X and measures the
 AC path of the bias tee on a scope / ESA, while a Keithley 2450 monitors the DC port as a HIGH-IMPEDANCE voltmeter.
 
-Stage 1 - DC block only      (receiver DC-coupled => the signal MUST be pure AC)
-    A  SDG CH1 -> receiver                         reference
-    B  SDG CH1 -> Thorlabs EF500 -> receiver       DC block
-    C  same as B, receiver AC-coupled (optional)
-    Result: DC block insertion loss = P(B) - P(A)
+ALL main measurements use DC50 (scope: SCOPE_COUPLING['DC'] = 'D50').  AC50 is only ever an EXTRA (STAGE1_ALSO_AC_COUPLED).
 
-Stage 2 - bias tee, pure AC  (receiver AC-coupled, DC block in front of it)
-    R  SDG CH1 -> EF500 -> receiver                reference
+Stage 1 - all NO-TEE references, one wiring pass (no bias tee, no Keithley)
+    A  SDG CH1 -> receiver                         'ref direct DC x V'  : 0 V (pure AC) + every level in PD_DC_LEVELS_V
+    B  SDG CH1 -> Thorlabs EF500 -> receiver       'ref EF500 DC x V'   : same levels (EF500 blocks DC, scope sees pure AC)
+    The EF500 stays on the receiver side from here on.
+    X  (extra, STAGE1_ALSO_AC_COUPLED) 0 V sweep of B with the receiver AC-coupled (scope A50)
+    Result: DC block insertion loss = P(B) - P(A); response vs DC level of the no-tee setup.
+    (An ESA only does the 0 V sweeps - it must never see DC.)
+
+Stage 2 - bias tee, pure AC  (receiver DC50, EF500 in front of it)
     T  SDG CH1 -> bias tee (AC+DC in); bias tee AC out -> EF500 -> receiver; bias tee DC out -> Keithley 2450
-    Result: bias tee insertion loss = P(T) - P(R)
+    Reference = stage 1 sweep B at 0 V (re-measured only if stage 1 was not run in this session).
+    Result: bias tee insertion loss = P(T) - P(B 0 V)
 
 Stage 3 - bias tee, AC + DC  (same wiring as T)
-    One sweep for each level in PD_DC_LEVELS_V (0 V = clean AC repeat).
+    One sweep for each level in PD_DC_LEVELS_V (0 V = clean AC repeat), then (scope) the same levels with the EF500
+    removed (bias tee AC port straight to the scope).  Every sweep is compared with the stage 1 reference at the same DC
+    level (tee + EF500 vs 'ref EF500', tee alone vs 'ref direct').
+    => run STAGES_TO_RUN = [1, 2, 3] in one go (the references are taken from memory).
 
 DC convention
     A Thorlabs PD has a 50 ohm series resistor: 0-10 V into Hi-Z, 0-5 V into 50 ohm.  The SDG is kept in its
@@ -64,8 +71,8 @@ import bias_tee_utils as bt
 # =============================================================================
 # Settings
 # =============================================================================
-STAGES_TO_RUN = [3]            # e.g. [1], [1,2], [1,2,3]. Run in order; stages 2/3 need the Keithley.
-                                  # Running [1,2] together lets stage 2 reuse the stage 1-C reference (no re-wiring).
+STAGES_TO_RUN = [1, 2, 3]     # normal run: all three in one go (stage 1 = every no-tee reference, then the tee). Stages 2/3 need the Keithley.
+                                  # Stages 2 and 3 take their references from stage 1, so they must run in the same session.
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 
 # --- instruments ---
@@ -104,7 +111,7 @@ DC_PORT_SERIES_R_OHM = 0.0        # resistor you put in series with the Keithley
 DC_PRECHECK_OFFSET_V = 0.1        # each DC sweep starts with this small SDG offset (2*0.1 V/50 ohm = 4 mA even into a dead short)
                                   # and only goes to the real level if the Keithley reads ~2x of it
 
-STAGE1_ALSO_AC_COUPLED = False    # sweep C (AC-coupled, DC block): always runs for scope; set True to also run for ESA receivers
+STAGE1_ALSO_AC_COUPLED = False    # EXTRA only: one more 0 V sweep with the receiver AC-coupled (scope A50). Never used as a reference.
 SETTLE_S = 0.5                    # wait after changing the SDG
 PASS_TOL_DB = 1.0                 # flat-response criterion relative to the reference
 
@@ -114,7 +121,8 @@ ESA_NREAD = 2                     # sweeps per point (max of the peaks is report
 
 # --- scope settings ('scope') ---
 SCOPE_CH = 1
-SCOPE_COUPLING = {'DC': 'D50', 'AC': 'A50'}   # 50 ohm input (built-in termination)
+SCOPE_COUPLING = {'DC': 'D50', 'AC': 'A50'}   # 50 ohm input (built-in termination). 'DC' (D50) is used for EVERY main measurement;
+                                              # 'AC' (A50) only for the optional extra sweep above.
 SCOPE_MEMORY = '140K'             # memory depth (the scope reports what it really used)
 SCOPE_NCYC = 100                  # record length >= this many signal periods
 SCOPE_NACQ = 3                    # records per point (power-averaged)

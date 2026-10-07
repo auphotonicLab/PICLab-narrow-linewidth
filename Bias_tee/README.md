@@ -42,12 +42,12 @@ Everything below is about **which impedance each instrument sees**, because it d
 | Receiver | Input as used | How the power is obtained |
 |---|---|---|
 | **FSW50 / SSA3021X** | 50 Ω | Peak of the trace, dBm directly (SSA starts at 9 kHz; lower points are skipped). |
-| **SDS2352X-E scope** | **50 Ω** built-in input (`D50`) | Raw 8-bit record → flat-top FFT → `P = Vpk²/(2·50 Ω)` (dBm into 50 Ω). |
+| **SDS2352X-E scope** | **1 MΩ** input → needs an **external 50 Ω feed-through terminator** on the BNC | Raw 8-bit record → flat-top FFT → `P = Vpk²/(2·50 Ω)` (dBm into 50 Ω). Coupling `D1M`/`A1M`. |
 
-* The SDS2352X-E supports a built-in 50 Ω input (`D50`/`A50`), so no external feed-through terminator is needed.
-  The script is configured with `SCOPE_COUPLING = {'DC': 'D50', 'AC': 'A50'}`.
-* **Cable chain:** SDG CH1 (BNC) → BNC-to-SMA cable → bias tee / EF500 (SMA) → SMA-to-BNC adapter → scope CH1 (BNC).
-  Use the same SMA-to-BNC adapter in both the reference sweep and the measurement sweep so its insertion loss cancels.
+* The scope's 1 MΩ input is *not* a 50 Ω load; without the feed-through the AC path would see a ~open end and the
+  numbers (and the PD/bias-tee behaviour) would be wrong. The scope's own input capacitance is in parallel with the
+  terminator; it is the same in reference and measurement. The channel menu of your scope may offer a 50 Ω input
+  (`D50`/`A50`; the guide says "varies by model") – not checked, not used.
 * **Receiver load errors cancel in the comparisons:** every result is "sample − reference" measured with the *same*
   receiver and cables/adapters (stage 1: direct vs. EF500; stage 2: EF500 vs. EF500+tee; stage 3: 0 V vs. DC level).
   Absolute dBm values are only as good as the 50 Ω assumption.
@@ -111,17 +111,20 @@ read the same DC level (SDG straight into the Keithley) with and without the res
 
 ## 2. Running
 
-1. In `bias_tee_characterization.py` set `MEASUREMENT` (`'scope'`, `'fsw'`, `'ssa'`), the IP addresses,
-   `SAVE_FOLDER` (defaults to a `data` folder next to the script) and `STAGES_TO_RUN`.
+1. In `bias_tee_characterization.py` set `MEASUREMENT` (`'scope'`, `'fsw'`, `'ssa'`), the IP addresses (**`SCOPE_IP`
+   is empty**), `SAVE_FOLDER` (defaults to a `data` folder next to the script) and `STAGES_TO_RUN`.
 2. Run the script. A pop-up asks for the label; data go to `SAVE_FOLDER/<label>/`.
 3. Follow the on-screen wiring prompts (the SDG output is off while you re-wire).
 4. For the scope's own FFT in the screenshots: enable Math → FFT (Flat Top) on the scope screen first.
 
+All main measurements use **DC50** on the scope (receiver DC-coupled). AC50 is only an optional *extra*
+(`STAGE1_ALSO_AC_COUPLED`). Run `STAGES_TO_RUN = [1, 2, 3]` in one go: stages 2 and 3 take their references from stage 1.
+
 | Stage | Wiring | Result |
 |---|---|---|
-| 1 | SDG → receiver, then SDG → EF500 → receiver (receiver DC-coupled, **pure AC**), optionally AC-coupled | DC block insertion loss |
-| 2 | Reference: SDG → EF500 → receiver. Then SDG → bias tee (AC out → EF500 → receiver, DC out → Keithley), pure AC | Bias tee insertion loss |
-| 3 | As stage 2 with DC levels `PD_DC_LEVELS_V` | AC response vs DC level, harmonics, Keithley DC |
+| 1 | **No bias tee, no Keithley.** A: SDG → receiver (direct). B: SDG → EF500 → receiver. Both at 0 V (pure AC) and every level in `PD_DC_LEVELS_V` (scope only; an ESA only does 0 V). The EF500 then stays on the receiver. | DC block insertion loss; no-tee response vs DC level (all references) |
+| 2 | SDG → bias tee (AC out → EF500 → receiver, DC out → Keithley), pure AC. Reference = stage 1 B at 0 V | Bias tee insertion loss |
+| 3 | Same wiring as stage 2 with the DC levels; then (scope) the EF500 removed (tee AC port → scope) | Tee loss vs DC level, each sweep against the stage 1 reference of the *same* DC level; harmonics; Keithley DC |
 
 ## 3. Output files (per stage, `<timestamp>_stage<N>_…`)
 `_data.h5` (all data, **all settings**, instrument read-backs, script sources), `_summary.csv`, `_report.pdf/.svg`,
@@ -129,13 +132,9 @@ read the same DC level (SDG straight into the Keithley) with and without the res
 `_PARTIAL_data.h5/_PARTIAL_summary.csv`. The load/impedance model above is also stored in the h5 (`/analysis`, attr
 `load_model`).
 
-## 4. Verified on real hardware
-* SDG6022X (192.168.1.101), SDS2352X-E (192.168.1.52), Keithley 2450 (192.168.1.151): all connect, IDN, and respond
-  correctly. D50 coupling confirmed on the scope. Keithley high-Z voltmeter mode (`AssertHighZ`) confirmed.
-* FSW50 and SSA3021X are not on the network in the current lab setup and have not been tested.
-
-**Not yet verified:** SDG ±5 V offset limit into 50 Ω; scope FFT readout vs `_fftcheck`; the 2450
-front-panel reading during a live stage-2/3 run (expected ≈ 2 × offset).
-
+## 4. Not verified on real hardware
+Everything has been run against simulated instruments only. In particular: SDG ±5 V offset limit into 50 Ω; real reply
+formats of the scope; SSA screenshot format and its DC input rating; the scope's FFT readout vs `_fftcheck`; the 2450
+front-panel reading (expected ≈ 2 × offset).
 First check without the bias tee (set up by hand): SDG in 50 Ω mode, 0.5 V DC offset, AC amplitude minimal, output straight into the
 Keithley (already in its 0 A high-Z voltmeter mode, e.g. after a stage-2 run starts) – it should read ≈ 1.000 V.
