@@ -11,7 +11,10 @@
       "Bash(pip list *)",
       "Bash(ping -n 3 192.168.1.87)",
       "Bash(ping -n 3 192.168.1.31)",
-      "Bash(ping -n 2 192.168.1.87)"
+      "Bash(ping -n 2 192.168.1.87)",
+      "Bash(mkdir -p \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures\")",
+      "Bash(mv \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/\"*.pdf \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\")",
+      "Bash(mv \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/\"*.svg \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\")"
     ]
   }
 }

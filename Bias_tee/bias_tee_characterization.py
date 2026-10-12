@@ -10,7 +10,7 @@ Same layout as Eye_diagram_lab.py / eye_diagram_utils.py:
 
 How to use
     1. Set MEASUREMENT (receiver) and the IP addresses below.
-    2. Set STAGES_TO_RUN, e.g. [1] today and [2, 3] later.  Each stage tells you how to wire the next step.
+    2. Set STAGES_TO_RUN, e.g. [1] for references only, [1, 2] for a full run.  Each stage tells you how to wire the next step.
     3. Run the script.  A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/ :
            <timestamp>_stage<N>_data.h5          all data (raw scope records / ESA traces, screenshots, settings)
            <timestamp>_stage<N>_summary.csv      power vs frequency of every sweep
@@ -33,16 +33,12 @@ Stage 1 - all NO-TEE references, one wiring pass (no bias tee, no Keithley)
     Result: DC block insertion loss = P(B) - P(A); response vs DC level of the no-tee setup.
     (An ESA only does the 0 V sweeps - it must never see DC.)
 
-Stage 2 - bias tee, pure AC  (receiver DC50, EF500 in front of it)
-    T  SDG CH1 -> bias tee (AC+DC in); bias tee AC out -> EF500 -> receiver; bias tee DC out -> Keithley 2450
-    Reference = stage 1 sweep B at 0 V (re-measured only if stage 1 was not run in this session).
-    Result: bias tee insertion loss = P(T) - P(B 0 V)
-
-Stage 3 - bias tee, AC + DC  (same wiring as T)
-    One sweep for each level in PD_DC_LEVELS_V (0 V = clean AC repeat), then (scope) the same levels with the EF500
-    removed (bias tee AC port straight to the scope).  Every sweep is compared with the stage 1 reference at the same DC
-    level (tee + EF500 vs 'ref EF500', tee alone vs 'ref direct').
-    => run STAGES_TO_RUN = [1, 2, 3] in one go (the references are taken from memory).
+Stage 2 - bias tee, AC + DC  (receiver DC50, Keithley monitors the DC port)
+    Part A (tee_block): SDG -> bias tee -> EF500 -> receiver, all DC levels.
+        Compared with stage 1 ref EF500 at the same DC level.
+    Part B (tee_iso, scope only): SDG -> bias tee -> receiver (no EF500), all DC levels.
+        Compared with stage 1 ref direct at the same DC level.
+    => run STAGES_TO_RUN = [1, 2] in one go (the references are taken from memory).
 
 DC convention
     A Thorlabs PD has a 50 ohm series resistor: 0-10 V into Hi-Z, 0-5 V into 50 ohm.  The SDG is kept in its
@@ -71,8 +67,7 @@ import bias_tee_utils as bt
 # =============================================================================
 # Settings
 # =============================================================================
-STAGES_TO_RUN = [1, 2, 3]     # normal run: all three in one go (stage 1 = every no-tee reference, then the tee). Stages 2/3 need the Keithley.
-                                  # Stages 2 and 3 take their references from stage 1, so they must run in the same session.
+STAGES_TO_RUN = [1, 2]        # run both together so stage 2 can use stage 1 references in memory. Stage 2 needs the Keithley.
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 
 # --- instruments ---

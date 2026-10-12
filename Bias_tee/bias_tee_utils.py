@@ -9,7 +9,7 @@ talks to the instruments, analyses the data and saves it lives here.
 Contents
 --------
 Setup                 instruments (SDG, receiver, Keithley) + the safe-operation logic + one frequency sweep
-stage1/2/3            the three measurement stages (each returns a stage-result dict)
+stage1/2              the two measurement stages (each returns a stage-result dict)
 run_stage             runs one stage and saves everything (h5, csv, pdf, svg, screenshots)
 tone_spectrum         flat-top FFT of a scope record -> tone power in dBm (equivalent to the ESA reading)
 write_stage_h5        HDF5 writer (data + ALL settings + script sources);  load_scope_record() / extract_script() read back
@@ -69,8 +69,8 @@ def validate_config(cfg):
     if cfg.MEASUREMENT not in RECEIVER_NAMES:
         raise ValueError("MEASUREMENT must be one of %s, got %r" % (list(RECEIVER_NAMES), cfg.MEASUREMENT))
     stages = list(cfg.STAGES_TO_RUN)
-    if not stages or any(s not in (1, 2, 3) for s in stages):
-        raise ValueError('STAGES_TO_RUN must be a non-empty list drawn from 1, 2, 3, got %r' % (cfg.STAGES_TO_RUN,))
+    if not stages or any(s not in (1, 2) for s in stages):
+        raise ValueError('STAGES_TO_RUN must be a non-empty list drawn from 1, 2, got %r' % (cfg.STAGES_TO_RUN,))
     if cfg.MEASUREMENT == 'scope' and not cfg.SCOPE_IP:
         raise ValueError('Set SCOPE_IP (IP address of the SDS2352X-E) in bias_tee_characterization.py')
     if not len(cfg.FREQUENCIES_HZ):
@@ -622,7 +622,9 @@ class Setup:
                 res['h3_dbc'][i] = pt.get('h3_dbc', np.nan)
                 res['v_scope_dc'][i] = pt.get('dc_from_scope_V', np.nan)
                 snr = ('  SNR %.0f dB  H2 %.0f dBc  H3 %.0f dBc' % (pt['snr_db'], pt['h2_dbc'], pt['h3_dbc'])) if self.is_scope else ''
-                print('  [%s] %10.0f Hz  P = %8.2f dBm (exp. %.2f)%s%s' % (label, f, pt['p_dbm'], expected_dbm(vpp), snr, msg))
+                sdc = res['v_scope_dc'][i]
+                sdc_str = ('  Vscope_dc = %+.4f V' % sdc) if (self.is_scope and np.isfinite(sdc)) else ''
+                print('  [%s] %10.0f Hz  P = %8.2f dBm (exp. %.2f)%s%s%s' % (label, f, pt['p_dbm'], expected_dbm(vpp), snr, msg, sdc_str))
                 if self.want_screenshot(f):
                     n_before = len(self.stage_screenshots)
                     self.screenshot('%s_%.0fHz' % (key, f))
@@ -778,7 +780,7 @@ def stage1(S):
     """ALL no-tee references, in one wiring pass (no bias tee, no Keithley):
          1-A  SDG -> receiver                 'ref direct DC x V'  (group ref_dc)   pure AC (0 V) + every DC level
          1-B  SDG -> EF500 -> receiver        'ref EF500 DC x V'   (group ref_ac)   pure AC (0 V) + every DC level
-       Receiver DC-coupled (scope: DC50) for both.  The EF500 then stays on the receiver for stages 2 and 3.
+       Receiver DC-coupled (scope: DC50) for both.  The EF500 then stays on the receiver for stage 2.
        Optional EXTRA (STAGE1_ALSO_AC_COUPLED): the 0 V EF500 sweep again with the receiver AC-coupled (scope: AC50).
        An ESA only does the 0 V sweeps (it must never see DC)."""
     cfg = S.cfg
@@ -796,7 +798,7 @@ def stage1(S):
     A = _ref_group(S, 'ref direct DC', 'ref_dc', levels, True, title)
     ask('STAGE 1-B (reference: EF500)\n'
         '  Insert the Thorlabs EF500 DC block:  SDG CH%d  ->  EF500  ->  %s\n'
-        '  Keep the EF500 on the receiver side - it stays there for stages 2 and 3.%s'
+        '  Keep the EF500 on the receiver side - it stays there for stage 2.%s'
         % (cfg.AFG_CH, S.rx_text, ('\n  Same DC levels again (the EF500 blocks the DC, the scope should see pure AC).' if S.is_scope else '')))
     B = _ref_group(S, 'ref EF500 DC', 'ref_ac', levels, False, title, A)
     sweeps = A + B
@@ -819,52 +821,27 @@ def stage1(S):
 
 
 def stage2(S):
-    """Bias tee with pure AC. Reference = the 0 V EF500 sweep of stage 1 (scope: DC50, same coupling as the tee sweep).
+    """Bias tee with AC + DC levels.
 
-    Run STAGES_TO_RUN = [1, 2, 3] together so stage 1 is in memory and the EF500 can stay on the receiver."""
+    Part A (tee_block): SDG -> bias tee -> EF500 -> receiver, all DC levels, Keithley monitored.
+    Part B (tee_iso, scope only): SDG -> bias tee -> receiver (no EF500), all DC levels, Keithley monitored.
+
+    Run STAGES_TO_RUN = [1, 2] together so stage 1 references are in memory for per-level comparisons.
+    Without stage 1 in memory each group is compared with its own 0 V sweep instead."""
     cfg = S.cfg
-    _title2 = 'Stage 2: bias tee, pure AC'
-    coupling = _rx_main_coupling(S)
-    stage1_res = S.prior_stage_results.get(1)
-    want = 'ref_ac' if S.is_scope else 'extra_ac'
-    R = next((sw for sw in stage1_res['sweeps'] if sw.get('sweep_group') == want and abs(sw['offset']) < 1e-12), None) \
-        if stage1_res else None
-    S.set_rx_coupling(coupling)
-    if R is not None:
-        print('Stage 2: reusing the stage 1 sweep %r as reference - no re-wiring needed.' % R['label'])
-    else:
-        ask('STAGE 2-R (reference, no bias tee)\n  SDG CH%d  ->  EF500  ->  %s (%s)' % (cfg.AFG_CH, S.rx_text, _cpl_text(S)))
-        R = S.sweep('ref: block only')
-    _plot_live(cfg, [R], _title2)
-    S.keithley.AssertHighZ()
-    ask('STAGE 2-T (bias tee, pure AC)\n' + tee_wiring_text(cfg, S.rx_text, cpl=_cpl_text(S)))
-    T = S.sweep('bias tee, AC only', monitor_dc=True)
-    _plot_live(cfg, [R, T], _title2)
-    return {'stage': 2, 'title': 'Stage 2: bias tee, pure AC', 'sweeps': [R, T], 'pairs': [(T['key'], R['key'])],
-            'monitor_dc': True, 'color_mode': 'categorical',
-            'what': 'Bias tee insertion loss (relative to block-only reference)'}
-
-
-def stage3(S):
-    """Bias tee with AC + PD-like DC levels (same wiring as 2-T), then (scope) the tee alone without the EF500.
-
-    The no-tee references (direct, EF500) come from stage 1 - run [1, 2, 3] in one go. Every tee sweep is compared with the
-    reference of the same DC level (tee + EF500 vs EF500, tee alone vs direct); without stage 1 in memory each group is
-    compared with its own 0 V sweep instead."""
-    cfg = S.cfg
-    _title3 = 'Stage 3: bias tee, AC + DC'
+    _title2 = 'Stage 2: bias tee, AC + DC'
     coupling = _rx_main_coupling(S)
     s1 = S.prior_stage_results.get(1)
     refs = []
     for sw in (s1['sweeps'] if s1 else []):
         if sw.get('sweep_group') in ('ref_dc', 'ref_ac'):
-            c = dict(sw)                                     # light copy: numbers only (the raw records stay in stage 1)
+            c = dict(sw)
             c['points'] = [None] * len(sw['points'])
             c['screenshots'] = []
             c['from_stage1'] = True
             refs.append(c)
     if not refs:
-        print('NOTE: stage 1 was not run in this session - the tee sweeps are compared with their own 0 V sweep only.')
+        print('NOTE: stage 1 was not run in this session - tee sweeps compared with their own 0 V sweep only.')
     ref_ac = {r['offset']: r for r in refs if r['sweep_group'] == 'ref_ac'}
     ref_dc = {r['offset']: r for r in refs if r['sweep_group'] == 'ref_dc'}
 
@@ -877,9 +854,7 @@ def stage3(S):
                 out.append((r['key'], ref['key']))
         return out
 
-    # --- Bias tee + EF500 ---
-    if S.kind == 'ssa':
-        print('NOTE: SSA3021X - make sure its input is AC coupled / rated for the DC block output.')
+    # --- Part A: bias tee + EF500 ---
     if not S.is_scope:
         ask('*** ESA SAFETY CHECK ***\n'
             '  The EF500 DC block MUST be connected between the bias tee AC port and the ESA input.\n'
@@ -888,44 +863,45 @@ def stage3(S):
         ask('*** CONFIRM AGAIN ***\n'
             '  Double-check: EF500 DC block is between the bias tee AC out and the ESA input. OK?')
     S.set_rx_coupling(coupling)
-    ask('STAGE 3 (bias tee + EF500)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V, cpl=_cpl_text(S)) +
+    S.keithley.AssertHighZ()
+    ask('STAGE 2-A (bias tee + EF500)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V, cpl=_cpl_text(S)) +
         '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
         % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
     tee_block_sweeps = []
     for lvl in cfg.PD_DC_LEVELS_V:
-        sw = S.sweep('DC %.2f V (tee %.2f V)' % (lvl, cfg.DC_AT_TEE_FACTOR * lvl), offset=lvl, monitor_dc=True)
+        sw = S.sweep('tee+EF500 DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
         sw['sweep_group'] = 'tee_block'
         tee_block_sweeps.append(sw)
         S.afg_output_off()
-        _plot_live(cfg, refs + tee_block_sweeps, _title3)
+        _plot_live(cfg, refs + tee_block_sweeps, _title2)
     sweeps = refs + tee_block_sweeps
     pairs = pair_up(tee_block_sweeps, ref_ac)
 
     if S.is_scope:
-        # --- Scope only: bias tee AC port straight to the scope (DC50), no EF500 ---
+        # --- Part B: bias tee AC port direct to scope, no EF500 ---
         S.set_rx_coupling('DC')
-        ask('STAGE 3 (bias tee isolation, no EF500)\n'
+        ask('STAGE 2-B (bias tee, no EF500)\n'
             + tee_isolation_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V)
             + '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
             % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
         iso_sweeps = []
         for lvl in cfg.PD_DC_LEVELS_V:
-            sw = S.sweep('no block, DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
+            sw = S.sweep('tee only DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
             sw['sweep_group'] = 'tee_iso'
-            sw['isolated'] = True   # keep for backward compat with old load_stage_result
+            sw['isolated'] = True
             iso_sweeps.append(sw)
             S.afg_output_off()
-            _plot_live(cfg, sweeps + iso_sweeps, _title3)
+            _plot_live(cfg, sweeps + iso_sweeps, _title2)
         sweeps = sweeps + iso_sweeps
         pairs += pair_up(iso_sweeps, ref_dc)
 
-    return {'stage': 3, 'title': 'Stage 3: bias tee, AC + DC', 'sweeps': sweeps,
+    return {'stage': 2, 'title': 'Stage 2: bias tee, AC + DC', 'sweeps': sweeps,
             'pairs': pairs,
             'monitor_dc': True, 'color_mode': 'sequential',
-            'what': 'Bias tee loss vs DC level (relative to the no-tee reference of stage 1 at the same DC level)'}
+            'what': 'Bias tee loss vs DC level (tee+EF500 vs EF500 ref; tee-only vs direct ref)'}
 
 
-STAGES = {1: stage1, 2: stage2, 3: stage3}
+STAGES = {1: stage1, 2: stage2}
 
 
 # =============================================================================
@@ -1025,7 +1001,8 @@ def make_report(cfg, res, base_path, show=False):
     by = sweep_by_key(res)
     sty = _series_styles(res)
     scope = cfg.MEASUREMENT == 'scope'
-    n = (3 if res['monitor_dc'] else 2) + (2 if scope else 0)
+    has_scope_dc = scope and any(np.isfinite(r.get('v_scope_dc', np.array([np.nan]))).any() for r in res['sweeps'])
+    n = (3 if res['monitor_dc'] else 2) + (1 if has_scope_dc else 0) + (2 if scope else 0)
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, axes = plt.subplots(n, 1, figsize=(8.5, (2.9 if n > 3 else 3.3) * n + 0.6), sharex=True)
         fig.patch.set_facecolor(SURFACE)
@@ -1036,20 +1013,23 @@ def make_report(cfg, res, base_path, show=False):
         ax1.axhline(expected_dbm(cfg.VPP), color=MUTED, ls=':', lw=1.0, label='ideal (%.2f dBm)' % expected_dbm(cfg.VPP))
         ax1.set_ylabel('Tone power at receiver (dBm)')
         ax1.set_title(res['title'] + '   [' + RECEIVER_NAMES[cfg.MEASUREMENT] + ']', loc='left', color=INK, fontsize=11)
-        ax1.legend(fontsize=7 if len(res['sweeps']) > 12 else 8, frameon=False, labelcolor=INK2,
-                   ncol=3 if len(res['sweeps']) > 12 else (2 if len(res['sweeps']) > 4 else 1))
+        large = len(res['sweeps']) > 8   # too many entries for in-axes legends → use a figure-level legend below
+        _lkw = dict(frameon=False, labelcolor=INK2)
+        if not large:
+            ax1.legend(fontsize=8, ncol=2 if len(res['sweeps']) > 4 else 1, **_lkw)
         ref_labels = set()
         for skey, rkey in res['pairs']:
             s, r = by[skey], by[rkey]
             c, m, ls = sty[skey]
             ax2.plot(s['freq'], s['p_dbm'] - r['p_dbm'], ls, color=c, marker=m, ms=5, lw=1.6,
-                     label='%s - %s' % (s['label'], r['label']))
+                     label='%s − %s' % (s['label'], r['label']))
             ref_labels.add(r['label'])
         ax2.axhspan(-cfg.PASS_TOL_DB, cfg.PASS_TOL_DB, color=GRID, alpha=0.7, lw=0)
         ax2.axhline(0, color=AXIS, lw=0.8)
         ax2.set_ylabel('Change vs reference (dB)\n(reference: %s)' % (' / '.join(sorted(ref_labels)) if len(ref_labels) <= 2
                                                                       else 'sweep of the same DC level / group base'))
-        ax2.legend(fontsize=8, frameon=False, labelcolor=INK2, ncol=1 if len(res['pairs']) <= 4 else 2)
+        if not large:
+            ax2.legend(fontsize=8, ncol=1 if len(res['pairs']) <= 4 else 2, **_lkw)
         if res['monitor_dc']:
             ax3 = axes[2]
             for r in res['sweeps']:
@@ -1059,7 +1039,20 @@ def make_report(cfg, res, base_path, show=False):
                 ax3.plot(r['freq'], r['v_dc'], ls, color=c, marker=m, ms=5, lw=1.6, label=r['label'])
                 ax3.axhline(cfg.DC_AT_TEE_FACTOR * r['offset'], color=c, ls=':', lw=0.9)
             ax3.set_ylabel('Keithley DC voltage (V)\n(dotted: %g x SDG offset)' % cfg.DC_AT_TEE_FACTOR)
-            ax3.legend(fontsize=8, frameon=False, labelcolor=INK2, ncol=2 if len(res['sweeps']) > 4 else 1)
+            if not large:
+                ax3.legend(fontsize=8, ncol=2 if len(res['sweeps']) > 4 else 1, **_lkw)
+        if has_scope_dc:
+            ax_sdc = axes[2 + (1 if res['monitor_dc'] else 0)]
+            for r in res['sweeps']:
+                sdc = r.get('v_scope_dc', np.full(len(r['freq']), np.nan))
+                if not np.isfinite(sdc).any():
+                    continue
+                c, m, ls = sty[r['key']]
+                ax_sdc.plot(r['freq'], sdc, ls, color=c, marker=m, ms=5, lw=1.6, label=r['label'])
+                ax_sdc.axhline(0, color=AXIS, lw=0.8)
+            ax_sdc.set_ylabel('Scope mean voltage (V)\n(DC at scope input)')
+            if not large:
+                ax_sdc.legend(fontsize=8, ncol=2 if len(res['sweeps']) > 4 else 1, **_lkw)
         if scope:                                    # harmonic distortion from the scope FFT (floor: 8-bit ADC)
             for ax, key, name in ((axes[-2], 'h2_dbc', 'Second'), (axes[-1], 'h3_dbc', 'Third')):
                 for r in res['sweeps']:
@@ -1067,12 +1060,19 @@ def make_report(cfg, res, base_path, show=False):
                         continue
                     c, m, ls = sty[r['key']]
                     ax.plot(r['freq'], r[key], ls, color=c, marker=m, ms=5, lw=1.6, label=r['label'])
-                ax.set_ylabel('%s harmonic (dBc)\n(floor = scope noise)' % name)      # same colours as the legend above
+                ax.set_ylabel('%s harmonic (dBc)\n(floor = scope noise)' % name)
         for ax in axes:
             ax.set_xscale('log')
             _style_axes(ax)
         axes[-1].set_xlabel('Frequency (Hz)')
-        fig.tight_layout()
+        if large:
+            h, l = ax1.get_legend_handles_labels()
+            ncol = min(len(h), 5)
+            n_rows = (len(h) + ncol - 1) // ncol
+            fig.tight_layout(rect=(0, 0.018 * n_rows + 0.01, 1, 1))
+            fig.legend(h, l, loc='lower center', ncol=ncol, fontsize=7, **_lkw)
+        else:
+            fig.tight_layout()
         for ext in ('pdf', 'svg'):
             p = '%s.%s' % (base_path, ext)
             fig.savefig(p, bbox_inches='tight', facecolor=fig.get_facecolor())
@@ -1504,12 +1504,12 @@ def make_all_spectra_report(cfg, res, base_path, show=False):
 
 
 def make_dc_response_report(cfg, res, base_path, show=False):
-    """Stage 1 and 3: AC power change vs DC bias level for a selection of frequencies.
+    """Stage 1 and 2: AC power change vs DC bias level for a selection of frequencies.
 
     One subplot per group (ref_dc, ref_ac, tee_block, tee_iso) — only present groups are shown.
     X-axis: SDG offset (V into 50 Ω).  Y-axis: ΔP vs 0 V sweep (dB).
     """
-    if res.get('stage') not in (1, 3):
+    if res.get('stage') not in (1, 2, 3):   # 3 = legacy three-stage data
         return
 
     # Collect sweeps by group; fall back to isolated flag for old files
@@ -1653,7 +1653,8 @@ def load_stage_result(h5_path):
                             'clipped':  bool(q.attrs.get('clipped', False)),
                             'n_samples': int(q.attrs.get('n_samples', 0)),
                             'n_records': int(q.attrs.get('n_records', 0)),
-                            'records':  [],   # raw codes not loaded — not needed for spectrum/report plots
+                            'records':  [q['adc_codes_%d' % j][()] for j in range(int(q.attrs.get('n_records', 0)))
+                                         if 'adc_codes_%d' % j in q],
                         })
                     elif 'trace_f_Hz' in q:        # ESA
                         pt.update({
@@ -1676,8 +1677,7 @@ def load_stage_result(h5_path):
         color_mode = 'sequential' if any(abs(r['offset']) > 0 for r in sweeps) else 'categorical'
         monitor_dc = stage >= 2
         what_map = {1: 'DC block insertion loss (EF500 vs direct) and change vs the 0 V sweep of each group',
-                    2: 'Bias tee insertion loss (relative to block-only reference)',
-                    3: 'Bias tee loss vs DC level (relative to the no-tee reference of stage 1 at the same DC level)'}
+                    2: 'Bias tee loss vs DC level (tee+EF500 vs EF500 ref; tee-only vs direct ref)'}
         res = {'stage': stage, 'title': title, 'sweeps': sweeps, 'pairs': pairs,
                'monitor_dc': monitor_dc, 'color_mode': color_mode,
                'what': what_map.get(stage, '')}
