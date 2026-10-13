@@ -21,6 +21,7 @@ Plots generated (same base name as the h5, overwriting any existing files):
 """
 
 import os
+import re
 import sys
 import glob
 
@@ -45,6 +46,8 @@ def reprocess(h5_path, show=False):
         print('  ERROR loading h5: %s' % e)
         return
     base = _strip_data_suffix(h5_path)
+    # Normalise _stageN in the base path to match the (possibly remapped) stage number.
+    base = re.sub(r'_stage\d+', '_stage%d' % res['stage'], base)
     print('  Stage %d: %s  (%d sweeps)' % (res['stage'], res['title'], len(res['sweeps'])))
     for fn, suffix in ((bt.make_report,            '_report'),
                        (bt.make_spectra_report,    '_spectra'),

@@ -14,7 +14,16 @@
       "Bash(ping -n 2 192.168.1.87)",
       "Bash(mkdir -p \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures\")",
       "Bash(mv \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/\"*.pdf \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\")",
-      "Bash(mv \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/\"*.svg \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\")"
+      "Bash(mv \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/\"*.svg \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\")",
+      "Bash(rm -f \"C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/\"*stage3*)",
+      "Bash(mv C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage3_data.h5 C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage2_data.h5)",
+      "Bash(mv C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage3_log.txt C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage2_log.txt)",
+      "Bash(mv C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage3_summary.csv C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage2_summary.csv)",
+      "Bash(mv C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage3_screenshots C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-52-28_stage2_screenshots)",
+      "Bash(rm -f C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/2026-10-12_14-44-46_stage2_data.h5)",
+      "Bash(rm -f 'C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/*stage2*' 'C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/*stage3*')",
+      "Bash(mv 'C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/*.pdf' C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/)",
+      "Bash(mv 'C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/*.svg' C:/Users/shd-photonics-inp/Documents/Jeppe_Surrow/Bias_tee/bias_tee_1_full_charac/figures/)"
     ]
   }
 }

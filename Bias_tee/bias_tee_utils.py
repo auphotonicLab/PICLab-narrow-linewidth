@@ -976,7 +976,7 @@ def _series_styles(res):
             grp = r.get('sweep_group', 'tee_iso' if r.get('isolated') else 'tee_block')
             ls = _GROUP_LS.get(grp, '-')
             c = offset_color[r['offset']]
-            sty[r['key']] = (c, MARKERS[i % len(MARKERS)], ls)
+            sty[r['key']] = (c, _GROUP_MARK.get(grp, 'o'), ls)
     else:
         for i, r in enumerate(res['sweeps']):
             sty[r['key']] = (CATEGORICAL[i % len(CATEGORICAL)], MARKERS[i % len(MARKERS)], '-')
@@ -1026,8 +1026,7 @@ def make_report(cfg, res, base_path, show=False):
             ref_labels.add(r['label'])
         ax2.axhspan(-cfg.PASS_TOL_DB, cfg.PASS_TOL_DB, color=GRID, alpha=0.7, lw=0)
         ax2.axhline(0, color=AXIS, lw=0.8)
-        ax2.set_ylabel('Change vs reference (dB)\n(reference: %s)' % (' / '.join(sorted(ref_labels)) if len(ref_labels) <= 2
-                                                                      else 'sweep of the same DC level / group base'))
+        ax2.set_ylabel('Insertion loss (dB)\n(grey band = ±%.4g dB pass/fail)' % cfg.PASS_TOL_DB)
         if not large:
             ax2.legend(fontsize=8, ncol=1 if len(res['pairs']) <= 4 else 2, **_lkw)
         if res['monitor_dc']:
@@ -1038,7 +1037,7 @@ def make_report(cfg, res, base_path, show=False):
                 c, m, ls = sty[r['key']]
                 ax3.plot(r['freq'], r['v_dc'], ls, color=c, marker=m, ms=5, lw=1.6, label=r['label'])
                 ax3.axhline(cfg.DC_AT_TEE_FACTOR * r['offset'], color=c, ls=':', lw=0.9)
-            ax3.set_ylabel('Keithley DC voltage (V)\n(dotted: %g x SDG offset)' % cfg.DC_AT_TEE_FACTOR)
+            ax3.set_ylabel('DC port voltage (V) [Keithley]\n(dotted = expected: %g × SDG offset)' % cfg.DC_AT_TEE_FACTOR)
             if not large:
                 ax3.legend(fontsize=8, ncol=2 if len(res['sweeps']) > 4 else 1, **_lkw)
         if has_scope_dc:
@@ -1050,7 +1049,7 @@ def make_report(cfg, res, base_path, show=False):
                 c, m, ls = sty[r['key']]
                 ax_sdc.plot(r['freq'], sdc, ls, color=c, marker=m, ms=5, lw=1.6, label=r['label'])
                 ax_sdc.axhline(0, color=AXIS, lw=0.8)
-            ax_sdc.set_ylabel('Scope mean voltage (V)\n(DC at scope input)')
+            ax_sdc.set_ylabel('AC port DC voltage (V) [scope]\n(0 = ideal DC isolation)')
             if not large:
                 ax_sdc.legend(fontsize=8, ncol=2 if len(res['sweeps']) > 4 else 1, **_lkw)
         if scope:                                    # harmonic distortion from the scope FFT (floor: 8-bit ADC)
@@ -1589,6 +1588,8 @@ def load_stage_result(h5_path):
         cfg.MEASUREMENT = str(hf.attrs.get('receiver', cfg_dict.get('MEASUREMENT', 'scope')))
 
         stage    = int(hf.attrs.get('stage', 1))
+        if stage == 3:   # legacy 3-stage data: old stage 3 (AC+DC) = new stage 2
+            stage = 2
         title    = str(hf.attrs.get('title', 'Stage %d' % stage))
         is_scope = cfg.MEASUREMENT == 'scope'
 

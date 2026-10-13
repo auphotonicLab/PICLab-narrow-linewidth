@@ -49,7 +49,7 @@ Everything below is about **which impedance each instrument sees**, because it d
   terminator; it is the same in reference and measurement. The channel menu of your scope may offer a 50 Ω input
   (`D50`/`A50`; the guide says "varies by model") – not checked, not used.
 * **Receiver load errors cancel in the comparisons:** every result is "sample − reference" measured with the *same*
-  receiver and cables/adapters (stage 1: direct vs. EF500; stage 2: EF500 vs. EF500+tee; stage 3: 0 V vs. DC level).
+  receiver and cables/adapters (stage 1: EF500 vs. direct; stage 2A: tee+EF500 vs. EF500; stage 2B: tee-only vs. direct).
   Absolute dBm values are only as good as the 50 Ω assumption.
 * **DC-coupled ESA = risk.** The FSW manual requires you to protect a DC-coupled input from DC. The script therefore
   forces the SDG off, verifies offset = 0 V by read-back before the output is switched on, and refuses any offset while
@@ -127,15 +127,22 @@ All main measurements use **DC50** on the scope (receiver DC-coupled). AC50 is o
 | 2B | EF500 removed: tee AC port → scope directly, all DC levels. Reference = stage 1 A at the same DC level. *(scope only)* | DC isolation of the AC port; tee-only insertion loss |
 
 ## 3. Output files (per stage, `<timestamp>_stage<N>_…`)
-`_data.h5` (all data, **all settings**, instrument read-backs, script sources), `_summary.csv`, `_report.pdf/.svg`,
-`_spectra.pdf/.svg`, `_fftcheck.pdf/.svg` (scope), `_screenshots/*.png`, `_log.txt`. An aborted stage saves
-`_PARTIAL_data.h5/_PARTIAL_summary.csv`. The load/impedance model above is also stored in the h5 (`/analysis`, attr
-`load_model`).
 
-## 4. Output files (per stage, `<timestamp>_stage<N>_…`)
-`_data.h5` (all data, **all settings**, instrument read-backs, script sources), `_summary.csv`, `_report.pdf/.svg`,
-`_spectra.pdf/.svg`, `_fftcheck.pdf/.svg` (scope), `_allspectra.pdf/.svg`, `_dcresponse.pdf/.svg`, `_screenshots/*.png`, `_log.txt`.
-An aborted stage saves `_PARTIAL_data.h5/_PARTIAL_summary.csv`. Regenerate plots from any h5 with `bias_tee_reprocess.py`.
+Raw data and figures are saved next to the h5. Figures are also collected in a `figures/` subfolder after reprocessing.
+
+| File | Contents |
+|---|---|
+| `_data.h5` | All waveforms, spectra, settings, instrument read-backs, script sources |
+| `_summary.csv` | One row per frequency point per sweep |
+| `_report.pdf/.svg` | Power vs frequency, delta (insertion loss), DC monitor, harmonics |
+| `_spectra.pdf/.svg` | FFT spectra at selected frequencies |
+| `_fftcheck.pdf/.svg` | Scope screenshot vs computed FFT (scope only) |
+| `_allspectra.pdf/.svg` | All FFT spectra overlaid |
+| `_dcresponse.pdf/.svg` | AC power change vs DC bias level (stages 1 and 2) |
+| `_screenshots/*.png` | Scope screen grabs |
+| `_log.txt` | Console log |
+
+An aborted stage saves `_PARTIAL_data.h5` / `_PARTIAL_summary.csv`. Regenerate all plots from any h5 with `bias_tee_reprocess.py`.
 
 ---
 
@@ -181,6 +188,8 @@ The stage 2B loss (tee only, 0.33 dB worst case) is slightly higher than stage 2
 comparison is against a direct SDG → scope cable — a marginally different connector geometry compared to
 SDG → tee → scope. Both are within normal bias tee performance for this frequency range.
 
-**DC isolation at the AC port (stage 2B scope mean voltage):** the scope mean with 0–3.5 V SDG offset applied was
-−4.4 mV at every DC level — unchanged from the 0 V case and consistent with the scope's own offset. The bias tee
-capacitor blocks DC essentially perfectly across the full 1 kHz – 10 MHz band.
+**DC isolation at the AC port (`v_scope_dc`):** the scope channel is DC-coupled (DC50), so its mean voltage is a direct
+read of any DC leaking through the bias tee capacitor to the AC output port. Measured value: **−4.4 mV at every DC
+level** (0–3.5 V SDG offset, i.e. 0–7 V at the DC port) — identical to the 0 V case and consistent with the scope's
+own offset error. The bias tee capacitor blocks DC essentially perfectly across the full 1 kHz – 10 MHz band.
+`v_scope_dc` is stored per frequency point in the h5 and plotted in `_report.pdf` (bottom panel).
