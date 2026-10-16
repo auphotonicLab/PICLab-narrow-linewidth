@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Callable, Iterable, Optional, Tuple
 
 import numpy as np
@@ -37,6 +38,7 @@ def direct_method(
         next_state[next_state < 0] = 0
 
         if len(time_points) + 1 > max_output_length:
+            warnings.warn("Number of reaction events exceeded the number pre-allocated. Simulation terminated prematurely.")
             break
 
         time_points.append(time_points[-1] + params.dt)
@@ -44,9 +46,16 @@ def direct_method(
         propensity_history.append(a)
 
         if output_fcn is not None and output_fcn(time_points[-1], next_state.copy()):
-            break
+            warnings.warn("Simulation was terminated by OutputFcn.")
+            t = np.asarray(time_points, dtype=float)
+            return t, np.asarray(state_history, dtype=float), np.asarray(propensity_history, dtype=float)
 
     t = np.asarray(time_points, dtype=float)
     x = np.asarray(state_history, dtype=float)
     b = np.asarray(propensity_history, dtype=float)
+    # Same end handling as MATLAB: the accumulated time overshoots tspan(2) by
+    # rounding, so the last sample is pinned to tspan(2) and given the previous state.
+    if t[-1] > t_stop and len(t) > 1:
+        t[-1] = t_stop
+        x[-1] = x[-2]
     return t, x, b

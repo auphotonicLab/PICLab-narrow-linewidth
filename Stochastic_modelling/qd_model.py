@@ -36,6 +36,7 @@ class Params:
     tau_ES_GS: float = 0.25 * 11.6e-12
     kappa1: float = 0.0
     kappa2: float = 23.72
+    xi: float = 0.0  # gain compression (cm^3); QD.m omits it, thesis Table A.5 uses 2e-16
     I: float = 0.002
     dt: float = 5e-13
     vg: float = field(init=False)
@@ -67,7 +68,7 @@ def qdlaser(x: np.ndarray, p: Params) -> np.ndarray:
     NES = x[1]
     NGS = x[2]
     SGS = x[3]
-    gGS = p.Nb / p.V_QD * p.a_GS * (2 * NGS / (2 * p.Nb) - 1)
+    gGS = p.Nb / p.V_QD * p.a_GS * (2 * NGS / (2 * p.Nb) - 1) / (1 + p.xi * SGS / p.V_QD)
     return np.array(
         [
             p.eta * p.I / p.q,
