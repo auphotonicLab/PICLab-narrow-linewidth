@@ -55,9 +55,9 @@ def photon_metrics(x: np.ndarray) -> PhotonMetrics:
         y = y[:-1]
 
     mean_photon = float(np.mean(photon))
-    var_photon = float(np.var(photon))
+    var_photon = float(np.var(photon, ddof=1))  # MATLAB var normalises by N-1
     mean_out = float(np.mean(y)) if y.size else float("nan")
-    var_out = float(np.var(y)) if y.size else float("nan")
+    var_out = float(np.var(y, ddof=1)) if y.size > 1 else float("nan")
     ans = float(var_out - mean_out) if y.size else float("nan")
     g20_out = g20(y)
     g20_in = g20(photon)
@@ -82,3 +82,20 @@ def photon_metrics(x: np.ndarray) -> PhotonMetrics:
         qm_out=qm_out,
         qm_in=qm_in,
     )
+
+
+def window_metrics(x: np.ndarray, burn: int = 0) -> Dict[str, float]:
+    """Steady-state statistics after discarding ``burn`` samples."""
+
+    x = np.asarray(x, dtype=float)[burn:]
+    photon = x[:, 3]
+    y = np.diff(x[:, 4])
+    mean_s = photon.mean()
+    mean_y = y.mean()
+    return {
+        "mean_S": float(mean_s),
+        "fano_S": float(photon.var(ddof=1) / mean_s) if mean_s else float("nan"),
+        "mean_NGS": float(x[:, 2].mean()),
+        "g20_out": g20(y),
+        "fano_out": float(y.var(ddof=1) / mean_y) if mean_y else float("nan"),
+    }

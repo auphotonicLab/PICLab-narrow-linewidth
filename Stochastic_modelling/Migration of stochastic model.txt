@@ -71,3 +71,23 @@ The structure is now:
 - Cell 11: optional output-noise spectrum, kept separate because it is more sensitive to sampling and scaling.
 
 All three cells ran successfully. The plots are informative, but the time-domain diagnostics are still dominated by the initial transient, so the next sensible refinement would be to add a steady-state window selector, for example using only the late-time portion of the run when you want MATLAB-vs-Python comparisons.
+
+
+
+Fixes and corrected engines (2026-10-09):
+Fixes to the MATLAB port:
+- direct_method_quiet.py imported from a non-existent package (Squeezing_python); the notebook failed in cell 1.
+- analysis.py: variances now use ddof=1 like MATLAB var. photon_metrics on the MATLAB export now matches every stored value to 1e-14.
+- direct_method*.py: end handling as in MATLAB (last sample pinned to tspan(2) with the previous state).
+- Notebook RIN cell: now uses the QD.m normalisation |fft(Y)*dt|^2/(N*dt)/<Y>^2, single-sided, dB, Savitzky-Golay (1, 301).
+- qd_model.Params has gain compression xi (default 0 = QD.m; thesis Table A.5 uses 2e-16 cm^3).
+
+The MATLAB engine is fixed-step tau-leaping (thesis Algorithm 2), not Gillespie's exact direct method. Near and below threshold two approximations bias it:
+emission and absorption lumped into one sign-flipping channel, and clipping negative populations to zero (this creates photons).
+qd_ssa.py adds two numba engines on the same model with separate emission/absorption channels and no clipping:
+- qd_ssa.tau_leap: fixed step, a step that would go negative is redone as two half steps.
+  substeps=N leaps with dt/N and samples every dt. Below threshold (<S> ~ 0.4 at 2 mA) tau-leaping at dt = 0.5 ps is biased
+  (<S> +12%, g20_out 2.1 vs 1.2 exact); substeps >= 25 matches the exact engine. The MATLAB engine has the same problem
+  (g20_out 3.2 at 2 mA). At 18 mA, 1 vs 25 substeps differ by a few percent in Fano/g20.
+- qd_ssa.gillespie: exact direct method sampled every dt (about 120 ns per event: ~16 s per simulated ns at 2 mA, ~75 s per ns at 18 mA).
+Both take quiet=True for quiet pumping and round the initial values to integers.
