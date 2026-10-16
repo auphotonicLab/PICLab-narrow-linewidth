@@ -125,6 +125,7 @@ All main measurements use **DC50** on the scope (receiver DC-coupled). AC50 is o
 | 1 | **No bias tee, no Keithley.** A: SDG → receiver (direct). B: SDG → EF500 → receiver. Both at 0 V (pure AC) and every level in `PD_DC_LEVELS_V` (scope only; an ESA only does 0 V). The EF500 then stays on the receiver. | DC block insertion loss; no-tee response vs DC level (all references) |
 | 2A | SDG → bias tee (AC out → EF500 → receiver, DC out → Keithley), all DC levels. Reference = stage 1 B at the same DC level. | Bias tee insertion loss vs DC level |
 | 2B | EF500 removed: tee AC port → scope directly, all DC levels. Reference = stage 1 A at the same DC level. *(scope only)* | DC isolation of the AC port; tee-only insertion loss |
+| 3 | DC only (pure DC from the SDG, receiver not measured). A: SDG → Keithley directly. B: SDG → bias tee, DC port → Keithley (same cable), AC port → EF500 → receiver. All levels in `PD_DC_LEVELS_V`. | Keithley vs 2 × SDG offset (the SDG's own DC error) and **tee − direct** per level = effect of the bias tee on the DC reading, with the RIN error it causes (`_dc.csv`, `_report.pdf`) |
 
 ## 3. Output files (per stage, `<timestamp>_stage<N>_…`)
 

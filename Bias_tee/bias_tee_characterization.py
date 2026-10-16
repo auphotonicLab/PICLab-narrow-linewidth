@@ -40,6 +40,13 @@ Stage 2 - bias tee, AC + DC  (receiver DC50, Keithley monitors the DC port)
         Compared with stage 1 ref direct at the same DC level.
     => run STAGES_TO_RUN = [1, 2] in one go (the references are taken from memory).
 
+Stage 3 - DC calibration (Keithley only, pure DC from the SDG, the receiver is not measured)
+    A  SDG -> Keithley directly (BNC-to-banana)                 Keithley vs 2 x SDG offset = the SDG's own DC error
+    B  SDG -> bias tee, DC port -> Keithley (same cable),       Keithley vs 2 x SDG offset
+       AC port -> EF500 -> receiver (as 2-A)
+    Result: 'tee - direct' per level = the effect of the bias tee on the DC reading (and the RIN error it causes).
+    Files: <timestamp>_stage3_data.h5 / _dc.csv / _report.pdf/.svg / _log.txt
+
 DC convention
     A Thorlabs PD has a 50 ohm series resistor: 0-10 V into Hi-Z, 0-5 V into 50 ohm.  The SDG is kept in its
     "50 ohm load" mode, so what you type is what a 50 ohm load sees.  In the bias tee the AC path ends in the
@@ -68,6 +75,7 @@ import bias_tee_utils as bt
 # Settings
 # =============================================================================
 STAGES_TO_RUN = [1, 2]        # run both together so stage 2 can use stage 1 references in memory. Stage 2 needs the Keithley.
+                              # [3] = DC calibration only (Keithley direct vs through the bias tee), see stage 3 above.
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 
 # --- instruments ---
@@ -80,7 +88,7 @@ SSA_IP = '192.168.1.11'           # Siglent SSA3021X
 KEITHLEY_IP = '192.168.1.151'     # Keithley 2450
 
 # --- saving ---
-SAVE_FOLDER = r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Bias_tee'
+SAVE_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee' #r'C:\Users\shd-photonics-inp\Documents\Jeppe_Surrow\Bias_tee'
 DEFAULT_SAVE_LABEL = ''           # pre-filled text in the label pop-up
 SAVE_SCREENSHOTS = True           # receiver screenshots (PNG, also embedded in the h5)
 SCREENSHOT_FREQS_HZ = [1e3, 1e5, 1e7]   # take a screenshot at these tones (set [] for none)
@@ -107,6 +115,8 @@ DC_PRECHECK_OFFSET_V = 0.1        # each DC sweep starts with this small SDG off
                                   # and only goes to the real level if the Keithley reads ~2x of it
 
 STAGE1_ALSO_AC_COUPLED = False    # EXTRA only: one more 0 V sweep with the receiver AC-coupled (scope A50). Never used as a reference.
+STAGE3_NREAD = 20                 # stage 3: Keithley readings per DC level (after the reading has settled)
+STAGE3_SETTLE_S = 1.0             # stage 3: wait after changing the DC level
 SETTLE_S = 0.5                    # wait after changing the SDG
 PASS_TOL_DB = 1.0                 # flat-response criterion relative to the reference
 

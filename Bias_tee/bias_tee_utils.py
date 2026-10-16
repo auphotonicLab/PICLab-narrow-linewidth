@@ -69,8 +69,8 @@ def validate_config(cfg):
     if cfg.MEASUREMENT not in RECEIVER_NAMES:
         raise ValueError("MEASUREMENT must be one of %s, got %r" % (list(RECEIVER_NAMES), cfg.MEASUREMENT))
     stages = list(cfg.STAGES_TO_RUN)
-    if not stages or any(s not in (1, 2) for s in stages):
-        raise ValueError('STAGES_TO_RUN must be a non-empty list drawn from 1, 2, got %r' % (cfg.STAGES_TO_RUN,))
+    if not stages or any(s not in (1, 2, 3) for s in stages):
+        raise ValueError('STAGES_TO_RUN must be a non-empty list drawn from 1, 2, 3, got %r' % (cfg.STAGES_TO_RUN,))
     if cfg.MEASUREMENT == 'scope' and not cfg.SCOPE_IP:
         raise ValueError('Set SCOPE_IP (IP address of the SDS2352X-E) in bias_tee_characterization.py')
     if not len(cfg.FREQUENCIES_HZ):
@@ -379,6 +379,23 @@ class Setup:
         self.afg.setParameters(channel=cfg.AFG_CH, waveform='SINE', frequency=freq, vpp=vpp,
                                offset=offset, load=cfg.AFG_LOAD)
         self.verify_tone(freq, vpp, offset)
+
+    def set_dc(self, offset):
+        """SDG in pure DC mode (no AC) at `offset` (50 ohm convention), verified by read-back. Output state unchanged."""
+        cfg = self.cfg
+        if self.rx_dc_coupled and abs(offset) > 0:
+            raise RuntimeError('Refusing DC offset %g V while the ESA is DC-coupled' % offset)
+        ch = 'C%d' % cfg.AFG_CH
+        self.afg.instr.write('%s:OUTP LOAD,%s' % (ch, cfg.AFG_LOAD))       # load first, then offset
+        self.afg.setParameters(channel=cfg.AFG_CH, waveform='DC', offset=offset, load=cfg.AFG_LOAD)
+        resp = self.afg.instr.query('%s:BSWV?' % ch)
+        outp = self.afg.instr.query('%s:OUTP?' % ch)
+        self.last_afg_readback = (resp.strip(), outp.strip())
+        m = re.search(r'OFST,([-+0-9.eE]+)', resp)
+        if not re.search(r'WVTP,\s*DC\b', resp) or not m or abs(float(m.group(1)) - offset) > 1e-3:
+            raise RuntimeError('SDG read-back mismatch: asked DC, offset %g V, got "%s"' % (offset, resp.strip()))
+        if not re.search(r'LOAD,\s*%s\b' % cfg.AFG_LOAD, outp):
+            raise RuntimeError('SDG load is not %s ohm: "%s"' % (cfg.AFG_LOAD, outp.strip()))
 
     def verify_tone(self, freq, vpp, offset):
         cfg = self.cfg
@@ -902,6 +919,195 @@ def stage2(S):
 
 
 STAGES = {1: stage1, 2: stage2}
+
+
+# =============================================================================
+# Stage 3: DC calibration - SDG into the Keithley directly vs through the bias tee DC port
+# =============================================================================
+
+def _dc_pass(S, part, levels, through_tee):
+    """Pure DC (no AC) at every level; the settled Keithley reading followed by STAGE3_NREAD readings per level."""
+    cfg = S.cfg
+    rows = S.stage3_rows[part]
+    S.afg_output_off()
+    S.keithley_guard(max(abs(l) for l in levels))         # 0 A / high-Z and a voltage limit above the highest level
+    try:
+        if through_tee and max(abs(l) for l in levels) > cfg.DC_PRECHECK_OFFSET_V:
+            pre = cfg.DC_PRECHECK_OFFSET_V                    # small DC first: <= 4 mA even into a shorted DC port
+            S.set_dc(pre)
+            S.afg.output_status(channel=cfg.AFG_CH, status='ON')
+            time.sleep(cfg.SETTLE_S)
+            v, exp = S.read_dc(), cfg.DC_AT_TEE_FACTOR * pre
+            if not (cfg.DC_ABORT_LOW_FRAC * exp <= v <= cfg.DC_ABORT_HIGH_FRAC * exp):
+                raise RuntimeError('DC pre-check FAILED: Keithley reads %.4f V, expected ~%.4f V at %.2f V SDG offset. Keithley '
+                                   'not on the bias tee DC port / wrong terminals / short? Output switched off.' % (v, exp, pre))
+            print('  DC pre-check OK: Keithley %.4f V at %.2f V offset (expected %.4f V)' % (v, pre, exp))
+        for lvl in levels:
+            S.set_dc(lvl)
+            S.afg.output_status(channel=cfg.AFG_CH, status='ON')
+            time.sleep(cfg.STAGE3_SETTLE_S)
+            S.read_dc()                                       # waits until the reading has settled
+            vals = np.array([S.keithley.GetMeas() for _ in range(cfg.STAGE3_NREAD)], float)
+            exp = cfg.DC_AT_TEE_FACTOR * lvl
+            mean = float(vals.mean())
+            if abs(exp) > 0 and not (cfg.DC_ABORT_LOW_FRAC * exp <= mean <= cfg.DC_ABORT_HIGH_FRAC * exp):
+                raise RuntimeError('Keithley reads %.4f V but ~%.4f V is expected (SDG offset %.2f V): not connected / wrong '
+                                   'terminals / SDG load setting? Output switched off.' % (mean, exp, lvl))
+            rows.append({'offset': lvl, 'expected': exp, 'mean': mean, 'std': float(vals.std()), 'readings': vals,
+                         'afg_readback': ' | '.join(S.last_afg_readback), 't': datetime.now().isoformat()})
+            print('  [%-6s] SDG %.2f V -> expected %.4f V   Keithley %.5f V +- %.5f V   (%+.2f mV, %+.3f %%)'
+                  % (part, lvl, exp, mean, vals.std(), 1e3 * (mean - exp), 100 * (mean / exp - 1) if exp else np.nan))
+    finally:
+        S.afg_output_off()
+
+
+def stage3(S):
+    """DC calibration of the DC path: what does the Keithley read for a known DC, directly and through the bias tee?
+         3-A  SDG -> Keithley directly                  (no bias tee)
+         3-B  SDG -> bias tee AC+DC input, DC port -> Keithley, AC port -> EF500 -> receiver (as stage 2-A)
+       Pure DC from the SDG (no AC). Expected reading: DC_AT_TEE_FACTOR (2) x offset. A-B removes the SDG's own offset
+       error (the same SDG levels are used in both), so 'tee - direct' is the effect of the bias tee on the DC reading."""
+    cfg = S.cfg
+    levels = sorted(set(float(l) for l in cfg.PD_DC_LEVELS_V))
+    S.stage3_rows = {'direct': [], 'tee': []}
+    ask('STAGE 3-A (DC calibration: SDG directly into the Keithley)\n'
+        '  Bias tee NOT connected.\n'
+        '  SDG CH%d (50 ohm mode)  ->  BNC-to-banana cable  ->  Keithley 2450 FRONT  HI (centre) / LO (shield)\n'
+        '  Pure DC, levels %s V -> the Keithley should read ~%g x these.' % (cfg.AFG_CH, levels, cfg.DC_AT_TEE_FACTOR))
+    _dc_pass(S, 'direct', levels, through_tee=False)
+    ask('STAGE 3-B (DC calibration: through the bias tee)\n' + tee_wiring_text(cfg, S.rx_text, levels, cpl=_cpl_text(S)) +
+        '  Use the SAME BNC-to-banana cable as in 3-A, now on the bias tee DC output.\n'
+        '  The receiver is not measured in this stage (a 50 ohm terminator on the EF500 is fine too).')
+    _dc_pass(S, 'tee', levels, through_tee=True)
+    return {'stage': 3, 'title': 'Stage 3: DC calibration, SDG -> Keithley direct vs through the bias tee', 'rows': S.stage3_rows}
+
+
+def dc_table(rows):
+    """Both passes side by side per SDG level (NaN where a pass is missing)."""
+    levels = sorted({r['offset'] for part in rows.values() for r in part})
+    get = lambda part, lvl, key: next((r[key] for r in rows.get(part, []) if r['offset'] == lvl), np.nan)
+    t = {'sdg_offset_V': np.array(levels),
+         'expected_V': np.array([next(r['expected'] for part in rows.values() for r in part if r['offset'] == l) for l in levels])}
+    for part in ('direct', 'tee'):
+        t['%s_mean_V' % part] = np.array([get(part, l, 'mean') for l in levels])
+        t['%s_std_V' % part] = np.array([get(part, l, 'std') for l in levels])
+    with np.errstate(divide='ignore', invalid='ignore'):
+        for part in ('direct', 'tee'):
+            t['%s_dev_mV' % part] = 1e3 * (t['%s_mean_V' % part] - t['expected_V'])
+            t['%s_dev_pct' % part] = np.where(t['expected_V'] != 0, 100 * (t['%s_mean_V' % part] / t['expected_V'] - 1), np.nan)
+        t['tee_minus_direct_mV'] = 1e3 * (t['tee_mean_V'] - t['direct_mean_V'])
+        ratio = np.where(np.abs(t['direct_mean_V']) > 1e-2, t['tee_mean_V'] / t['direct_mean_V'], np.nan)
+        t['tee_minus_direct_pct'] = 100 * (ratio - 1)
+        t['rin_error_dB'] = -20 * np.log10(ratio)          # RIN with the tee reading instead of the true DC: + = too high
+    return t
+
+
+def make_dc_report(cfg, res, base_path, show=False):
+    t = dc_table(res['rows'])
+    with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 6.6), sharex=True)
+        fig.patch.set_facecolor(SURFACE)
+        for i, part in enumerate(('direct', 'tee')):
+            ax1.errorbar(t['expected_V'], t['%s_dev_mV' % part], yerr=1e3 * t['%s_std_V' % part], fmt='-' + MARKERS[i],
+                         color=CATEGORICAL[i], ms=6, lw=1.6, capsize=3,
+                         label='SDG -> Keithley %s' % ('directly' if part == 'direct' else 'through the bias tee DC port'))
+        ax1.axhline(0, color=AXIS, lw=0.8)
+        ax1.set_ylabel('Keithley - %g x SDG offset (mV)' % cfg.DC_AT_TEE_FACTOR)
+        ax1.set_title(res['title'], loc='left', color=INK, fontsize=11)
+        ax1.legend(fontsize=8, frameon=False, labelcolor=INK2)
+        ax2.plot(t['expected_V'], t['tee_minus_direct_pct'], '-' + MARKERS[2], color=CATEGORICAL[2], ms=6, lw=1.6,
+                 label='through the tee vs directly (RIN error = -20 log10(tee / direct))')
+        ax2.axhline(0, color=AXIS, lw=0.8)
+        ax2.set_ylabel('Tee - direct (%)')
+        ax2.set_xlabel('Expected DC at the Keithley (V)')
+        ax2.legend(fontsize=8, frameon=False, labelcolor=INK2)
+        for ax in (ax1, ax2):
+            _style_axes(ax)
+        fig.tight_layout()
+        for ext in ('pdf', 'svg'):
+            p = '%s.%s' % (base_path, ext)
+            fig.savefig(p, bbox_inches='tight', facecolor=fig.get_facecolor())
+            print('  Saved: %s' % p)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+
+def save_dc_csv(path, res):
+    t = dc_table(res['rows'])
+    with open(path, 'w', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(list(t))
+        for row in zip(*t.values()):
+            w.writerow(['%.7g' % x for x in row])
+    print('  Saved: %s' % path)
+
+
+def write_dc_h5(path, cfg, S, label, res):
+    with h5py.File(path, 'w') as hf:
+        hf.attrs['label'], hf.attrs['stage'], hf.attrs['title'] = label, 3, res['title']
+        hf.attrs['afg_idn'], hf.attrs['keithley_idn'] = S.afg_idn, S.keithley_idn
+        hf.attrs['created'] = datetime.now().isoformat()
+        cg = hf.create_group('config')
+        for k, v in vars(cfg).items():
+            cg.attrs[k] = _attr(v)
+        cg.attrs['config_json'] = json.dumps(vars(cfg), default=str, indent=1, sort_keys=True)
+        cg.attrs['keithley_setup'] = json.dumps(S.keithley_setup, default=str)
+        _write_settings(hf.create_group('settings'), S.stage_settings)
+        _write_provenance(hf)
+        lg = hf.create_group('log')
+        lg.create_dataset('console_log', data='\n'.join(S.tee.lines[S.log_idx:]), dtype=h5py.string_dtype('utf-8'))
+        lg.create_dataset('prompts', data=['[%s] %s' % pr for pr in PROMPT_LOG[S.prompt_idx:]], dtype=h5py.string_dtype('utf-8'))
+        tg = hf.create_group('table')
+        for k, v in dc_table(res['rows']).items():
+            tg.create_dataset(k, data=v)
+        for part, rows in res['rows'].items():
+            pg = hf.create_group(part)
+            for r in rows:
+                g = pg.create_group('offset_%+.3fV' % r['offset'])
+                g.create_dataset('readings_V', data=r['readings'])
+                for k in ('offset', 'expected', 'mean', 'std', 'afg_readback', 't'):
+                    g.attrs[k] = _attr(r[k])
+    print('  HDF5 saved: %s' % path)
+
+
+def run_dc_stage(S, run_folder, base, label):
+    """Stage 3 (DC only): own csv / h5 / pdf / svg; partial files on an abort."""
+    cfg = S.cfg
+    S.stage3_rows = {'direct': [], 'tee': []}
+    try:
+        res = stage3(S)
+    except BaseException as e:
+        print('\nSTAGE 3 ABORTED (%s: %s)' % (type(e).__name__, e))
+        part = {'stage': 3, 'title': 'Stage 3 (ABORTED, partial data)', 'rows': S.stage3_rows}
+        if any(S.stage3_rows.values()):
+            try:
+                S.stage_settings['stage_end'] = S.settings_snapshot()
+                save_dc_csv(os.path.join(run_folder, base + '_PARTIAL_dc.csv'), part)
+                write_dc_h5(os.path.join(run_folder, base + '_PARTIAL_data.h5'), cfg, S, label, part)
+            except Exception as e2:
+                print('  (partial data could not be saved: %s)' % e2)
+        raise
+    S.stage_settings['stage_end'] = S.settings_snapshot()
+    S.prior_stage_results[3] = res
+    t = dc_table(res['rows'])
+    print('\nDC calibration (Keithley - %g x SDG offset; tee - direct):' % cfg.DC_AT_TEE_FACTOR)
+    for i, lvl in enumerate(t['sdg_offset_V']):
+        print('  SDG %.2f V: direct %+7.2f mV   tee %+7.2f mV   tee - direct %+7.2f mV (%+.3f %%)  -> RIN error %+.4f dB'
+              % (lvl, t['direct_dev_mV'][i], t['tee_dev_mV'][i], t['tee_minus_direct_mV'][i], t['tee_minus_direct_pct'][i],
+                 t['rin_error_dB'][i]))
+    print('\nSaving ...')
+    write_dc_h5(os.path.join(run_folder, base + '_data.h5'), cfg, S, label, res)
+    save_dc_csv(os.path.join(run_folder, base + '_dc.csv'), res)
+    try:
+        make_dc_report(cfg, res, os.path.join(run_folder, base + '_report'), show=cfg.SHOW_PLOTS)
+    except Exception as e:
+        print('  warning: plot failed (%s) - the data are saved in the h5 file' % e)
+    with open(os.path.join(run_folder, base + '_log.txt'), 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(S.tee.lines[S.log_idx:]) + '\n')
+    print('\nStage 3 saved in %s' % run_folder)
+    return res
 
 
 # =============================================================================
@@ -1733,6 +1939,8 @@ def run_stage(S, stage, run_folder, label):
     cfg = S.cfg
     base = '%s_stage%d' % (pic.datetimestring(), stage)
     S.begin_stage(run_folder, base)
+    if stage == 3:                                   # DC only: no sweeps, own files
+        return run_dc_stage(S, run_folder, base, label)
     try:
         res = STAGES[stage](S)
     except BaseException as e:                       # abort (error / Ctrl+C): keep what was measured so far
