@@ -49,7 +49,7 @@ Everything below is about **which impedance each instrument sees**, because it d
   terminator; it is the same in reference and measurement. The channel menu of your scope may offer a 50 Ω input
   (`D50`/`A50`; the guide says "varies by model") – not checked, not used.
 * **Receiver load errors cancel in the comparisons:** every result is "sample − reference" measured with the *same*
-  receiver and cables/adapters (stage 1: direct vs. EF500; stage 2: EF500 vs. EF500+tee; stage 3: 0 V vs. DC level).
+  receiver and cables/adapters (stage 1: EF500 vs. direct; stage 2A: tee+EF500 vs. EF500; stage 2B: tee-only vs. direct).
   Absolute dBm values are only as good as the 50 Ω assumption.
 * **DC-coupled ESA = risk.** The FSW manual requires you to protect a DC-coupled input from DC. The script therefore
   forces the SDG off, verifies offset = 0 V by read-back before the output is switched on, and refuses any offset while
@@ -118,23 +118,78 @@ read the same DC level (SDG straight into the Keithley) with and without the res
 4. For the scope's own FFT in the screenshots: enable Math → FFT (Flat Top) on the scope screen first.
 
 All main measurements use **DC50** on the scope (receiver DC-coupled). AC50 is only an optional *extra*
-(`STAGE1_ALSO_AC_COUPLED`). Run `STAGES_TO_RUN = [1, 2, 3]` in one go: stages 2 and 3 take their references from stage 1.
+(`STAGE1_ALSO_AC_COUPLED`). Run `STAGES_TO_RUN = [1, 2]` in one go: stage 2 takes its references from stage 1.
 
 | Stage | Wiring | Result |
 |---|---|---|
 | 1 | **No bias tee, no Keithley.** A: SDG → receiver (direct). B: SDG → EF500 → receiver. Both at 0 V (pure AC) and every level in `PD_DC_LEVELS_V` (scope only; an ESA only does 0 V). The EF500 then stays on the receiver. | DC block insertion loss; no-tee response vs DC level (all references) |
-| 2 | SDG → bias tee (AC out → EF500 → receiver, DC out → Keithley), pure AC. Reference = stage 1 B at 0 V | Bias tee insertion loss |
-| 3 | Same wiring as stage 2 with the DC levels; then (scope) the EF500 removed (tee AC port → scope) | Tee loss vs DC level, each sweep against the stage 1 reference of the *same* DC level; harmonics; Keithley DC |
+| 2A | SDG → bias tee (AC out → EF500 → receiver, DC out → Keithley), all DC levels. Reference = stage 1 B at the same DC level. | Bias tee insertion loss vs DC level |
+| 2B | EF500 removed: tee AC port → scope directly, all DC levels. Reference = stage 1 A at the same DC level. *(scope only)* | DC isolation of the AC port; tee-only insertion loss |
 
 ## 3. Output files (per stage, `<timestamp>_stage<N>_…`)
-`_data.h5` (all data, **all settings**, instrument read-backs, script sources), `_summary.csv`, `_report.pdf/.svg`,
-`_spectra.pdf/.svg`, `_fftcheck.pdf/.svg` (scope), `_screenshots/*.png`, `_log.txt`. An aborted stage saves
-`_PARTIAL_data.h5/_PARTIAL_summary.csv`. The load/impedance model above is also stored in the h5 (`/analysis`, attr
-`load_model`).
 
-## 4. Not verified on real hardware
-Everything has been run against simulated instruments only. In particular: SDG ±5 V offset limit into 50 Ω; real reply
-formats of the scope; SSA screenshot format and its DC input rating; the scope's FFT readout vs `_fftcheck`; the 2450
-front-panel reading (expected ≈ 2 × offset).
-First check without the bias tee (set up by hand): SDG in 50 Ω mode, 0.5 V DC offset, AC amplitude minimal, output straight into the
-Keithley (already in its 0 A high-Z voltmeter mode, e.g. after a stage-2 run starts) – it should read ≈ 1.000 V.
+Raw data and figures are saved next to the h5. Figures are also collected in a `figures/` subfolder after reprocessing.
+
+| File | Contents |
+|---|---|
+| `_data.h5` | All waveforms, spectra, settings, instrument read-backs, script sources |
+| `_summary.csv` | One row per frequency point per sweep |
+| `_report.pdf/.svg` | Power vs frequency, delta (insertion loss), DC monitor, harmonics |
+| `_spectra.pdf/.svg` | FFT spectra at selected frequencies |
+| `_fftcheck.pdf/.svg` | Scope screenshot vs computed FFT (scope only) |
+| `_allspectra.pdf/.svg` | All FFT spectra overlaid |
+| `_dcresponse.pdf/.svg` | AC power change vs DC bias level (stages 1 and 2) |
+| `_screenshots/*.png` | Scope screen grabs |
+| `_log.txt` | Console log |
+
+An aborted stage saves `_PARTIAL_data.h5` / `_PARTIAL_summary.csv`. Regenerate all plots from any h5 with `bias_tee_reprocess.py`.
+
+---
+
+## 5. Measurement results and interpretation
+
+### 5.1 Why the Keithley reads 2 × the SDG offset
+
+The SDG is in **50 Ω load mode**: the typed offset is the voltage across a 50 Ω load. The SDG's Thévenin
+open-circuit voltage is therefore **2 × typed offset** (the 50 Ω source resistance drops the other half into a 50 Ω load).
+
+The bias tee DC port terminates in the Keithley's > 10 GΩ input resistance — effectively an open circuit. Because no DC
+current flows through the 50 Ω source impedance, the full open-circuit voltage appears at the DC port:
+
+> **V_Keithley ≈ 2 × SDG offset**   (e.g. typed 3.50 V → 6.989 V measured, < 0.2 % error)
+
+The factor of 2 also matches the Thorlabs PD convention: a PD with a 50 Ω series resistor produces 0–5 V into a 50 Ω
+load = 0–10 V open-circuit. The bias tee DC port sees exactly that open-circuit voltage.
+
+### 5.2 Why the insertion loss is ~0.14–0.33 dB (peak near 100 kHz)
+
+First characterization (bias tee no. 1, Oct 2026, scope + SDG6022X, 1 kHz – 10 MHz):
+
+| Measurement | 1 kHz | 10 kHz | 100 kHz | 1 MHz | 10 MHz |
+|---|---|---|---|---|---|
+| tee + EF500 vs EF500 only (stage 2A) | −0.14 dB | −0.24 dB | −0.26 dB | −0.25 dB | −0.14 dB |
+| tee only vs direct (stage 2B) | −0.18 dB | −0.31 dB | −0.32 dB | −0.30 dB | −0.19 dB |
+
+Values are essentially **independent of DC bias** (variation < 0.01 dB over 0–3.5 V SDG offset, i.e. 0–7 V at the DC port).
+All 14 sweep comparisons **PASS** the 1.0 dB tolerance. Worst case: **0.33 dB**.
+
+**Physical origin of the frequency shape:**
+
+The bias tee AC path is a series capacitor from the common port to the AC output. Its series impedance Z_C = 1/(2πfC)
+gives more loss at lower frequencies. With C ≈ 9 µF (estimated from the 0.14 dB at 1 kHz), Z_C < 0.2 Ω above 100 kHz
+and is not the dominant mechanism there.
+
+The hump peaking near 100 kHz is consistent with the **self-resonant frequency (SRF) of the 100 mH shunt inductor**.
+A 100 mH inductor with ~25 pF parasitic capacitance has SRF ≈ 1/(2π√(0.1 × 25e-12)) ≈ 100 kHz. Near the SRF the
+inductor's dissipation (finite Q) is maximised, loading the AC path slightly. Above the SRF the inductor becomes
+capacitive and its loading drops again, which is why the loss falls back at 10 MHz.
+
+The stage 2B loss (tee only, 0.33 dB worst case) is slightly higher than stage 2A (0.27 dB) because the reference
+comparison is against a direct SDG → scope cable — a marginally different connector geometry compared to
+SDG → tee → scope. Both are within normal bias tee performance for this frequency range.
+
+**DC isolation at the AC port (`v_scope_dc`):** the scope channel is DC-coupled (DC50), so its mean voltage is a direct
+read of any DC leaking through the bias tee capacitor to the AC output port. Measured value: **−4.4 mV at every DC
+level** (0–3.5 V SDG offset, i.e. 0–7 V at the DC port) — identical to the 0 V case and consistent with the scope's
+own offset error. The bias tee capacitor blocks DC essentially perfectly across the full 1 kHz – 10 MHz band.
+`v_scope_dc` is stored per frequency point in the h5 and plotted in `_report.pdf` (bottom panel).

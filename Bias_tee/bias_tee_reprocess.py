@@ -17,10 +17,11 @@ Plots generated (same base name as the h5, overwriting any existing files):
   _spectra.pdf/.svg       FFT spectra at SPECTRA_FREQS_HZ
   _fftcheck.pdf/.svg      scope screenshots vs our FFT (scope only, needs screenshots in h5)
   _allspectra.pdf/.svg    all FFT spectra overlaid (scope only)
-  _dcresponse.pdf/.svg    AC response vs DC bias level (stage 3 only)
+  _dcresponse.pdf/.svg    AC response vs DC bias level (stages 1 and 2)
 """
 
 import os
+import re
 import sys
 import glob
 
@@ -45,6 +46,8 @@ def reprocess(h5_path, show=False):
         print('  ERROR loading h5: %s' % e)
         return
     base = _strip_data_suffix(h5_path)
+    # Normalise _stageN in the base path to match the (possibly remapped) stage number.
+    base = re.sub(r'_stage\d+', '_stage%d' % res['stage'], base)
     print('  Stage %d: %s  (%d sweeps)' % (res['stage'], res['title'], len(res['sweeps'])))
     for fn, suffix in ((bt.make_report,            '_report'),
                        (bt.make_spectra_report,    '_spectra'),
@@ -96,5 +99,4 @@ if __name__ == '__main__':
         sys.exit(0)
 
     for p in files:
-        reprocess(p, show=True)
-    plt.show()
+        reprocess(p, show=False)
