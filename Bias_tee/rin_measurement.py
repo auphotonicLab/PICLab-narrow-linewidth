@@ -53,6 +53,12 @@ What is computed (rin_utils.compute_rin)
     The background (laser blocked) is subtracted in linear power; points less than MIN_ABOVE_BACKGROUND_DB above it are
     dropped from 'rin' (the csv / h5 also hold the RIN as measured and the floor).
 
+What is done with the HighFinesse file (COMPARE_HIGHFINESSE)
+    Its FFT lines (50 Hz apart) are averaged in LINEAR units in the same log bins as the ESA RIN, then CORRECTED for
+    the HighFinesse's dB averaging (see HIGHFINESSE_DB_AVERAGING_CORRECTION below: +2.33 dB at Av count 20, +2.17 dB
+    at 10, 0 at 1), and only then compared: 'ESA - HighFinesse (corrected)'. Every output says which correction was
+    added; the csv / h5 keep the HighFinesse bins both as exported and corrected.
+
 Safety
     * ESA: the input is switched to DC coupling only after 'yes' to the DC-block question (given in this session), and
       back to AC coupling when the script ends (also after an error / Ctrl+C).
@@ -121,13 +127,18 @@ SESSION_TIMEOUT_H = 8                 # a kept session that was not used for thi
 # NOT in high-Z voltmeter mode. True here forces the reset at every start.
 RESET_KEITHLEY_EVERY_START = False
 
-# --- ESA: (start Hz, stop Hz, RBW Hz, VBW Hz); RMS detector, power average ---
-# ONE sweep with one RBW / VBW for the whole span. RBW 100 Hz = 1/10 of the start frequency (keeps the 0 Hz peak of the
-# ESA out of the first points) and exactly one RBW per point with 100001 points, so nothing is skipped.
-# Several entries = several sweeps stitched together, e.g. one per decade with RBW = start / 100:
-#   [(1e3, 1e4, 10, 100), (1e4, 1e5, 100, 1e3), (1e5, 1e6, 1e3, 1e4), (1e6, 1e7, 1e4, 1e5)]  with ESA_POINTS = 1001
-ESA_SEGMENTS = [(1e3, 1e7, 100, 1e3)]
-ESA_POINTS = 100001               # points per sweep (FSW maximum: 100001)
+# --- ESA: (start Hz, stop Hz, RBW Hz, VBW Hz[, points]); RMS detector, power average ---
+# Several entries = several sweeps stitched together (each converted with its own RBW, the shared boundary point is
+# taken once; the log bins then average across the boundary). Points per segment: the 5th entry, else ESA_POINTS.
+# Present choice: one point per RBW in both segments.
+#   1 kHz - 100 kHz  RBW 10 Hz , 9901 points (10 Hz apart): 10x more independent points per bin at 1-10 kHz than with
+#                    100 Hz, so the low decade scatters ~3x less; RBW = 1/100 of the start keeps the 0 Hz (LO) peak out.
+#   100 kHz - 10 MHz RBW 100 Hz, 99001 points (100 Hz apart), as before.
+# A change here makes a new background (the session notices that the ESA settings changed).
+# The single-sweep setting used until 2026-10-17:  [(1e3, 1e7, 100, 1e3)]  with ESA_POINTS = 100001
+ESA_SEGMENTS = [(1e3, 1e5, 10, 100, 9901),
+                (1e5, 1e7, 100, 1e3, 99001)]
+ESA_POINTS = 100001               # points of a segment that does not give its own (FSW maximum: 100001)
 ESA_AVERAGES = 20                 # sweeps averaged (trace scatter at most ~ 4.3 dB / sqrt(averages))
 ESA_REF_LEVEL_DBM = -10           # must stay above the TOTAL power at the input; lower = lower noise floor
 ESA_ATTEN_DB = 10                 # input attenuation (None = auto). Lower = lower noise floor, less protection.
@@ -151,6 +162,17 @@ COMPARE_HIGHFINESSE = True       # True: every measurement asks you to start the
                                   # Compare again later (other HighFinesse file): rin_compare_highfinesse.py
 HIGHFINESSE_FOLDER = 'HighFinesse'   # where you save them: a folder name = next to the label folders (in SAVE_FOLDER),
                                      # or an absolute path
+HIGHFINESSE_DB_AVERAGING_CORRECTION = True
+# The HighFinesse averages its Av count = N spectra in dB, NOT in power, so its noise reads LOW (tested 2026-10-17 with
+# N = 1, 2, 5, 10, 20: exactly as predicted). Every exported FFT line is on average 2.51 dB low; after the linear mean
+# in the log bins used here the bias is 10 N log10(Gamma(1 + 1/N)) dB:
+#     N = 1: 0   2: -1.05   5: -1.86   10: -2.17   20: -2.33 dB
+# N is read from 'Av count' in each HighFinesse file (Averaging = 0 = one spectrum), so any setting on the HighFinesse
+# works; more averages (up to its maximum of 20) only reduce the scatter.
+# True: that amount is ADDED to the binned HighFinesse RIN before it is plotted as 'corrected' and compared with the ESA
+# (the console, the plot titles, the csv column highfinesse_db_averaging_correction_dB and the h5 say so). The
+# HighFinesse file and the faint 'every FFT line' curve stay as exported. False = compare as exported (old behaviour).
+# Narrow lines (steady tones) are not biased by dB averaging, so there the correction over-corrects.
 
 # --- background (laser blocked): noise floor of detector + ESA and the dark offset ---
 BACKGROUND = 'measure'            # 'measure' = once per session; 'none'; or the path of an earlier *_rin_data.h5 (same ESA settings)
