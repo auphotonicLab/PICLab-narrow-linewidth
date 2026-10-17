@@ -18,9 +18,11 @@ Output in  <label folder>/<timestamp>_vs_<HighFinesse file name>/ :
     <timestamp>_rin_vs_highfinesse_<channel>.csv the compared bins, and a copy of the HighFinesse .txt
 
 How they are compared (rin_utils.compare_highfinesse): the HighFinesse FFT lines are averaged in linear units in
-exactly the logarithmic bins of the ESA RIN (BINS_PER_DECADE of the measurement), over the ESA frequency range.
-ESA - HighFinesse is printed per decade and as the median of all bins. A constant offset of about 3 dB would mean
-that one of the two is a double-sided spectrum.
+exactly the logarithmic bins of the ESA RIN (BINS_PER_DECADE of the measurement), over the ESA frequency range, and
+then CORRECTED for the HighFinesse's dB averaging (DB_AVERAGING_CORRECTION; from the Av count in the HighFinesse file:
++2.33 dB at 20, +2.17 dB at 10, 0 at 1 - see rin_utils.HF_AVERAGING_DOC). This also works for measurements taken
+before the correction existed. ESA - HighFinesse (corrected) is printed per decade and as the median of all bins.
+A constant offset of about 3 dB would mean that one of the two is a double-sided spectrum.
 """
 
 import os
@@ -37,6 +39,7 @@ ESA_H5 = 'newest'
 HIGHFINESSE_TXT = 'newest'
 SAVE_FOLDER = settings.SAVE_FOLDER                                        # where 'newest' looks for the ESA file
 HIGHFINESSE_DIR = rin.highfinesse_dir(rin.config_from_globals(vars(settings)))   # where 'newest' looks for the .txt
+DB_AVERAGING_CORRECTION = settings.HIGHFINESSE_DB_AVERAGING_CORRECTION   # see rin_measurement.py
 MAX_TIME_GAP_MIN = 30         # warn if the HighFinesse file was not saved within this long after the ESA start
 SHOW_PLOTS = True
 
@@ -49,7 +52,7 @@ def main():
         raise SystemExit('No ESA measurement found (%s)' % (esa or os.path.join(SAVE_FOLDER, '*', '*_rin_data.h5')))
     if not txt or not os.path.isfile(txt):
         raise SystemExit('No HighFinesse file found (%s)' % (txt or os.path.join(HIGHFINESSE_DIR, '*.txt')))
-    rin.compare_saved(esa, txt, MAX_TIME_GAP_MIN, show=SHOW_PLOTS)
+    rin.compare_saved(esa, txt, MAX_TIME_GAP_MIN, show=SHOW_PLOTS, db_averaging_correction=DB_AVERAGING_CORRECTION)
     if SHOW_PLOTS:
         plt.show()
 

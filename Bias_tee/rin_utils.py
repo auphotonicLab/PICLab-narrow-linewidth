@@ -25,6 +25,7 @@ Signal chain of one channel
 
 import os
 import csv
+import math
 import glob
 import json
 import time
@@ -89,31 +90,40 @@ def validate_config(cfg):
         if len(set(vals)) != len(vals):
             raise ValueError('Every channel needs its own %s, got %s' % (key, vals))
 
+    if not 101 <= cfg.ESA_POINTS <= 100001:
+        raise ValueError('ESA_POINTS must be 101 ... 100001 (FSW limit), got %r' % (cfg.ESA_POINTS,))
     segs = []
     for s in cfg.ESA_SEGMENTS:
         s = tuple(float(x) for x in s)
         if len(s) == 3:
             s += (10 * s[2],)                              # VBW default: 10 x RBW
-        if len(s) != 4:
-            raise ValueError('ESA_SEGMENTS entries are (start Hz, stop Hz, RBW Hz[, VBW Hz]), got %r' % (s,))
-        segs.append(s)
+        if len(s) == 4:
+            s += (float(cfg.ESA_POINTS),)                  # points default: ESA_POINTS
+        if len(s) != 5:
+            raise ValueError('ESA_SEGMENTS entries are (start Hz, stop Hz, RBW Hz[, VBW Hz[, points]]), got %r' % (s,))
+        segs.append(s[:4] + (int(round(s[4])),))
     if not segs:
         raise ValueError('ESA_SEGMENTS is empty')
-    if not 101 <= cfg.ESA_POINTS <= 100001:
-        raise ValueError('ESA_POINTS must be 101 ... 100001 (FSW limit), got %r' % (cfg.ESA_POINTS,))
     if cfg.N_MEASUREMENTS < 1:
         raise ValueError('N_MEASUREMENTS must be >= 1')
-    for key in ('ASK_DC_BLOCK_EVERY_START', 'RESET_KEITHLEY_EVERY_START', 'BACKGROUND_EVERY_START', 'COMPARE_HIGHFINESSE'):
+    for key in ('ASK_DC_BLOCK_EVERY_START', 'RESET_KEITHLEY_EVERY_START', 'BACKGROUND_EVERY_START', 'COMPARE_HIGHFINESSE',
+                'HIGHFINESSE_DB_AVERAGING_CORRECTION'):
         if not isinstance(getattr(cfg, key), bool):
             raise ValueError('%s must be True or False, got %r' % (key, getattr(cfg, key)))
-    for i, (f0, f1, rbw, vbw) in enumerate(segs):
+    for i, (f0, f1, rbw, vbw, npts) in enumerate(segs):
         if not (0 < f0 < f1 and rbw > 0 and vbw > 0):
             raise ValueError('ESA_SEGMENTS[%d] = %r: need 0 < start < stop and RBW, VBW > 0' % (i, segs[i]))
+        if not 101 <= npts <= 100001:
+            raise ValueError('ESA_SEGMENTS[%d]: points must be 101 ... 100001 (FSW limit), got %d' % (i, npts))
         if i and f0 < segs[i - 1][1]:
             raise ValueError('ESA_SEGMENTS must be sorted and must not overlap (segment %d starts below the stop of %d)' % (i, i - 1))
         if rbw > f0 / 10.0:
             print('WARNING: segment %d: RBW %g Hz is more than 1/10 of the start frequency %g Hz - the 0 Hz (LO) peak and '
                   'the poor resolution will distort the low end.' % (i, rbw, f0))
+        spacing = (f1 - f0) / (npts - 1)
+        if spacing > 1.5 * rbw:
+            print('NOTE: segment %d: points are %.3g Hz apart, RBW is %g Hz - narrow lines between the points can be missed '
+                  '(more points or a wider RBW).' % (i, spacing, rbw))
     cfg.ESA_SEGMENTS = segs
     if cfg.COMPARE_HIGHFINESSE and not cfg.BINS_PER_DECADE:
         raise ValueError('COMPARE_HIGHFINESSE needs BINS_PER_DECADE > 0 (both RIN spectra are compared in the same bins)')
@@ -645,12 +655,12 @@ class Channel:
         self.dc = DcMonitor(cfg, spec)
 
     def segments(self, cfg):
-        """ESA_SEGMENTS clipped to what this ESA can do -> [(index, start, stop, rbw, vbw)]."""
+        """ESA_SEGMENTS clipped to what this ESA can do -> [(index, start, stop, rbw, vbw, points)]."""
         out = []
-        for i, (f0, f1, rbw, vbw) in enumerate(cfg.ESA_SEGMENTS):
+        for i, (f0, f1, rbw, vbw, npts) in enumerate(cfg.ESA_SEGMENTS):
             if f1 <= self.esa.min_freq_hz:
                 continue
-            out.append((i, max(f0, self.esa.min_freq_hz), f1, rbw, vbw))
+            out.append((i, max(f0, self.esa.min_freq_hz), f1, rbw, vbw, npts))
         return out
 
 
@@ -828,9 +838,10 @@ class RinSetup:
                 active = [ch for ch in self.channels if i in plan[ch.name]]
                 segs = {}
                 for ch in active:
-                    _, f0, f1, rbw, vbw = plan[ch.name][i]
-                    rb = ch.esa.configure(f0, f1, rbw, vbw, cfg.ESA_POINTS, cfg.ESA_AVERAGES)
-                    segs[ch.name] = dict(rb, index=i, rbw_set_hz=rbw, vbw_set_hz=vbw, averages=cfg.ESA_AVERAGES,
+                    _, f0, f1, rbw, vbw, npts = plan[ch.name][i]
+                    rb = ch.esa.configure(f0, f1, rbw, vbw, npts, cfg.ESA_AVERAGES)
+                    segs[ch.name] = dict(rb, index=i, rbw_set_hz=rbw, vbw_set_hz=vbw, points_set=npts,
+                                         averages=cfg.ESA_AVERAGES,
                                          settings=ch.esa.snapshot(), errors=ch.esa.errors())
                     for e in segs[ch.name]['errors']:
                         print('  WARNING: ESA [%s] reports: %s' % (ch.name, e))
@@ -1098,7 +1109,74 @@ def print_summary(cfg, name, spec, res):
 HF_IMAGES = ('*.png', '*.jpg', '*.jpeg', '*.bmp')
 
 COMPARE_COLUMNS = [('frequency_Hz', 'f'), ('esa_rin_dBc_Hz', 'esa_db'), ('esa_measurement_floor_dBc_Hz', 'floor_db'),
-                   ('highfinesse_rin_dB_Hz', 'hf_db'), ('esa_minus_highfinesse_dB', 'diff_db')]
+                   ('highfinesse_rin_as_exported_dB_Hz', 'hf_raw_db'),
+                   ('highfinesse_db_averaging_correction_dB', 'hf_corr_db'),
+                   ('highfinesse_rin_corrected_dB_Hz', 'hf_db'), ('esa_minus_highfinesse_corrected_dB', 'diff_db')]
+
+# -----------------------------------------------------------------------------
+# HighFinesse averaging: it averages its spectra in dB, NOT in power
+# -----------------------------------------------------------------------------
+HF_AVERAGING_DOC = """\
+The HighFinesse LWA averages its 'Av count' = N spectra in dB (mean of 10 log10 of each spectrum), not in power.
+For noise this reads LOW: every FFT line of a single spectrum is exponentially distributed, and the mean of its
+logarithm lies 10 gamma / ln 10 = 2.507 dB below the logarithm of its mean (gamma = Euler's constant) - for any N.
+(Measured 2026-10-17 with N = 1, 2, 5, 10, 20 on one laser: the levels and the point-to-point scatter follow this
+exactly; power averaging would have left the level unchanged.)
+
+This script averages the HighFinesse FFT lines in LINEAR units in the logarithmic bins (as the ESA RIN). A linear mean
+of lines that are themselves dB-averages of N spectra lies
+        bias(N) = 10 N log10( Gamma(1 + 1/N) )   dB
+below the true power spectral density:  N = 1: 0,  2: -1.05,  5: -1.86,  10: -2.17,  20: -2.33 dB.
+With HIGHFINESSE_DB_AVERAGING_CORRECTION = True, -bias(N) (N from 'Av count' in the file) is ADDED to the binned
+HighFinesse RIN before it is compared or plotted as 'corrected'. The file itself and the faint 'every FFT line' curve
+are left as exported (those lines read 2.51 dB low on average for noise). Valid for broadband noise; a steady tone is
+not biased by dB averaging, so the correction over-corrects narrow lines by the same amount."""
+
+
+def hf_av_count(header):
+    """Number of spectra the HighFinesse averaged, from its file header ('Av count'; 'Averaging = 0' or 'Av count = 0'
+    = one single spectrum) -> int >= 1, or None if the header does not say."""
+    try:
+        n = int(float(str(header.get('Av count', '')).strip()))
+    except ValueError:
+        return None
+    if str(header.get('Averaging', '1')).strip() == '0':
+        n = 1
+    return max(n, 1)
+
+
+def hf_db_averaging_bias_db(n):
+    """Level of a LINEAR mean over many FFT lines that are each the mean of n spectra in dB, relative to the true
+    power spectral density (dB, <= 0): 10 n log10(Gamma(1 + 1/n)). See HF_AVERAGING_DOC."""
+    return 10.0 * n * np.log10(math.gamma(1.0 + 1.0 / n))
+
+
+def prepare_highfinesse(cfg, hf):
+    """Decide the dB-averaging correction of one HighFinesse file (stored in hf, used by bin_highfinesse):
+        hf['av_count']        N from the header (None = unknown)
+        hf['correction_db']   dB ADDED to the binned HighFinesse RIN (0 if switched off or N unknown)
+        hf['correction_text'] one line saying what was done (printed, in the plots and in the h5)"""
+    n = hf_av_count(hf['header'])
+    hf['av_count'] = n
+    if not getattr(cfg, 'HIGHFINESSE_DB_AVERAGING_CORRECTION', True):
+        hf['correction_db'], hf['corrected'] = 0.0, False
+        hf['correction_text'] = ('HighFinesse NOT corrected for its dB averaging (HIGHFINESSE_DB_AVERAGING_CORRECTION = '
+                                 'False): it reads %s low for noise' % ('%.2f dB' % -hf_db_averaging_bias_db(n) if n else
+                                                                         'up to 2.51 dB'))
+    elif n is None:
+        hf['correction_db'], hf['corrected'] = 0.0, False
+        hf['correction_text'] = ('HighFinesse NOT corrected: "Av count" missing in the file header, so its dB-averaging '
+                                 'bias (up to -2.51 dB) is unknown')
+    else:
+        hf['correction_db'], hf['corrected'] = abs(hf_db_averaging_bias_db(n)), True
+        if n == 1:
+            hf['correction_text'] = ('HighFinesse: one single spectrum (Av count 1) - not averaged, so no dB-averaging '
+                                     'correction is needed (+0.00 dB)')
+        else:
+            hf['correction_text'] = ('HighFinesse corrected %+.2f dB: it averages its %d spectra in dB, not in power, '
+                                     'which reads noise %.2f dB low after the linear mean in the bins'
+                                     % (hf['correction_db'], n, hf['correction_db']))
+    return hf
 
 
 def highfinesse_dir(cfg):
@@ -1136,17 +1214,20 @@ def parse_highfinesse(path):
     db = np.full(len(f), -np.inf)
     np.maximum.at(db, inv, y_all)
     return {'file': os.path.normpath(path), 'header': header, 'f': f, 'db': db,
-            'binned_export': bool((count > 1).any()), 'image': None}
+            'binned_export': bool((count > 1).any()), 'image': None,
+            'av_count': hf_av_count(header), 'correction_db': 0.0, 'corrected': False,
+            'correction_text': 'HighFinesse as exported (prepare_highfinesse not called)'}
 
 
-def bin_highfinesse(hf, per_decade, f_lo=0.0, f_hi=np.inf):
+def bin_highfinesse(hf, per_decade, f_lo=0.0, f_hi=np.inf, corrected=True):
     """HighFinesse RIN between f_lo and f_hi, averaged in LINEAR units in the same logarithmic bins as the ESA RIN
-    -> (f, dB/Hz)."""
+    -> (f, dB/Hz). corrected=True adds hf['correction_db'] (its dB-averaging correction, see HF_AVERAGING_DOC and
+    prepare_highfinesse); corrected=False = the bins of the file as exported."""
     sel = (hf['f'] >= f_lo) & (hf['f'] <= f_hi)
     if not sel.any():
         return np.array([]), np.array([])
     fb, yb = log_bin(hf['f'][sel], 10 ** (hf['db'][sel] / 10.0), per_decade)
-    return fb, _db(yb)
+    return fb, _db(yb) + (hf.get('correction_db', 0.0) if corrected else 0.0)
 
 
 def _bin_id(f_bin, per_decade):
@@ -1159,13 +1240,15 @@ def compare_highfinesse(cfg, res, hf):
     the ESA frequency range only -> dict(f, esa_db, floor_db, hf_db, diff_db, median_db, n_compared, bands).
 
     Both are linear means of the points in each bin, so ESA - HighFinesse compares the same frequencies with the same
-    weight. 'bands' = difference of the linear means per decade. Bins where the ESA RIN is at its measurement floor
-    (NaN) are not compared."""
+    weight. The HighFinesse bins are CORRECTED for its dB averaging (hf['correction_db'], see HF_AVERAGING_DOC);
+    'hf_raw_db' holds them as exported. 'bands' = difference of the linear means per decade. Bins where the ESA RIN is
+    at its measurement floor (NaN) are not compared."""
     nb = cfg.BINS_PER_DECADE
     b = res['binned']
-    fh, hdb = bin_highfinesse(hf, nb, res['f'][0], res['f'][-1])
+    fh, hdb = bin_highfinesse(hf, nb, res['f'][0], res['f'][-1], corrected=True)
     _, ie, ih = np.intersect1d(_bin_id(b['f'], nb), _bin_id(fh, nb), return_indices=True)
     f, esa, hfv = b['f'][ie], b['rin_db'][ie], hdb[ih]
+    corr = float(hf.get('correction_db', 0.0))
     diff = esa - hfv
     ok = np.isfinite(diff)
     lin = lambda x: 10 ** (np.asarray(x) / 10.0)
@@ -1174,13 +1257,23 @@ def compare_highfinesse(cfg, res, hf):
         dec = ok & (f >= a) & (f < 10 * a)
         if dec.sum() >= 3:
             bands['%s-%s' % (_hz(a), _hz(10 * a))] = float(_db(lin(esa[dec]).mean()) - _db(lin(hfv[dec]).mean()))
-    return {'f': f, 'esa_db': esa, 'floor_db': b['floor_db'][ie], 'hf_db': hfv, 'diff_db': diff,
+    return {'f': f, 'esa_db': esa, 'floor_db': b['floor_db'][ie], 'hf_db': hfv, 'hf_raw_db': hfv - corr,
+            'hf_corr_db': np.full(len(f), corr), 'diff_db': diff, 'correction_db': corr,
             'median_db': float(np.median(diff[ok])) if ok.any() else np.nan, 'n_compared': int(ok.sum()), 'bands': bands}
 
 
 def format_bands(c):
     return '   '.join('%s: %+.2f' % kv for kv in c['bands'].items()) + \
         '   | median of %d bins: %+.2f' % (c['n_compared'], c['median_db'])
+
+
+def _hf_state(hf):
+    return 'corrected' if hf.get('corrected') else 'as exported, NOT corrected'
+
+
+def print_compare(name, c, hf):
+    print('[%s] %s' % (name, hf['correction_text']))
+    print('[%s] ESA - HighFinesse (%s), dB: %s' % (name, _hf_state(hf), format_bands(c)))
 
 
 def collect_highfinesse(cfg, t_start, base):
@@ -1227,6 +1320,8 @@ def collect_highfinesse(cfg, t_start, base):
     print('  HighFinesse: %s (its timestamp %s, Av count %s, optical power %s; ESA measurement started %s)%s'
           % (os.path.basename(hf['file']), h.get('Timestamp', '?'), h.get('Av count', '?'), h.get('OpticalPower', '?'),
              since, '' if hf['image'] else ' - no screenshot'))
+    prepare_highfinesse(cfg, hf)
+    print('  %s' % hf['correction_text'])
     return hf
 
 
@@ -1248,25 +1343,34 @@ def rin_plot_limits(results, hf, per_decade):
 
 
 def make_highfinesse_rin_report(cfg, label, stamp, hf, n_channels, base_path, lims=None):
-    """The HighFinesse RIN on its own: every FFT line of the raw export (faint) and the same logarithmic bins as the
-    ESA RIN (linear mean). Saved as PDF and SVG, with the axes of the ESA plot when lims is given."""
+    """The HighFinesse RIN on its own: every FFT line of the raw export (faint, as exported), the same logarithmic bins
+    as the ESA RIN (linear mean) as exported (thin dashed) and corrected for its dB averaging (bold, what is compared).
+    Saved as PDF and SVG, with the axes of the ESA plot when lims is given."""
     nb = cfg.BINS_PER_DECADE
-    fb, db = bin_highfinesse(hf, nb)
+    fb, db = bin_highfinesse(hf, nb, corrected=True)
+    _, db_raw = bin_highfinesse(hf, nb, corrected=False)
     h, colour = hf['header'], _hf_colour(n_channels)
+    corr = hf.get('correction_db', 0.0)
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, ax = plt.subplots(figsize=(8.5, 5.0))
         fig.patch.set_facecolor(bt.SURFACE)
         ax.plot(hf['f'], hf['db'], color=colour, lw=0.5, alpha=0.3, rasterized=True,
-                label='every FFT line (%d, %s apart)' % (len(hf['f']), _hz(float(np.median(np.diff(hf['f']))))))
-        ax.plot(fb, db, color=colour, lw=1.6, label='%d bins per decade (linear mean)' % nb)
+                label='every FFT line as exported (%d, %s apart; dB-averaged: noise reads 2.51 dB low)'
+                      % (len(hf['f']), _hz(float(np.median(np.diff(hf['f']))))))
+        if corr:
+            ax.plot(fb, db_raw, '--', color=colour, lw=0.9, label='%d bins per decade, linear mean, as exported' % nb)
+        ax.plot(fb, db, color=colour, lw=1.6, label=('%d bins per decade, linear mean, corrected %+.2f dB (dB averaging, '
+                'Av count %s)' % (nb, corr, hf.get('av_count'))) if hf.get('corrected') else
+                ('%d bins per decade, linear mean, as exported (NOT corrected)' % nb))
         ax.set_xscale('log')
         if lims:
             ax.set_xlim(lims[0])
             ax.set_ylim(lims[1])
         info = ',  '.join('%s %s' % (k, h[k]) for k in ('Timestamp', 'OpticalPower', 'Av count', 'Range[V]') if k in h)
-        ax.set_title('HighFinesse RIN   %s   %s\n%s\n%s' % (label, stamp, os.path.basename(hf['file']), info),
-                     loc='left', color=bt.INK, fontsize=10)
-        ax.set_ylabel('RIN (dB/Hz), as exported by the HighFinesse')
+        ax.set_title('HighFinesse RIN   %s   %s\n%s\n%s\n%s' % (label, stamp, os.path.basename(hf['file']), info,
+                                                             hf.get('correction_text', '')),
+                     loc='left', color=bt.INK, fontsize=9)
+        ax.set_ylabel('RIN (dB/Hz)')
         ax.set_xlabel('Frequency (Hz)')
         bt._style_axes(ax)
         ax.legend(fontsize=8, frameon=False, labelcolor=bt.INK2)
@@ -1276,12 +1380,14 @@ def make_highfinesse_rin_report(cfg, label, stamp, hf, n_channels, base_path, li
 
 def make_compare_report(cfg, label, stamp, results, hf, cmp, base_path, lims=None, show=False):
     """ESA RIN of every channel and the HighFinesse RIN in the same bins (top), ESA - HighFinesse per bin (bottom)."""
-    fb, db = bin_highfinesse(hf, cfg.BINS_PER_DECADE)
+    fb, db = bin_highfinesse(hf, cfg.BINS_PER_DECADE, corrected=True)
+    corr = hf.get('correction_db', 0.0)
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 7.6), sharex=True, gridspec_kw={'height_ratios': [3, 1.5]})
         fig.patch.set_facecolor(bt.SURFACE)
-        ax1.plot(fb, db, color=_hf_colour(len(results)), lw=1.6, label='HighFinesse LWA (%s, %s)'
-                 % (os.path.basename(hf['file']), hf['header'].get('Timestamp', '?')))
+        ax1.plot(fb, db, color=_hf_colour(len(results)), lw=1.6, label='HighFinesse LWA, %s (%s, %s)'
+                 % (('corrected %+.2f dB for its dB averaging' % corr) if hf.get('corrected') else
+                    'as exported, NOT corrected', os.path.basename(hf['file']), hf['header'].get('Timestamp', '?')))
         spread = [3.0]
         for i, (name, res) in enumerate(results.items()):
             c, b, d = bt.CATEGORICAL[i], res['binned'], cmp[name]
@@ -1293,14 +1399,14 @@ def make_compare_report(cfg, label, stamp, results, hf, cmp, base_path, lims=Non
             if np.isfinite(d['diff_db']).any():
                 spread.append(np.nanpercentile(np.abs(d['diff_db']), 98))
         ax1.set_ylabel('RIN (dBc/Hz), single-sided\n(%d bins per decade)' % cfg.BINS_PER_DECADE)
-        ax1.set_title('RIN   %s   %s   ESA vs HighFinesse, measured at the same time' % (label, stamp),
-                      loc='left', color=bt.INK, fontsize=10)
+        ax1.set_title('RIN   %s   %s   ESA vs HighFinesse, measured at the same time\n%s'
+                      % (label, stamp, hf.get('correction_text', '')), loc='left', color=bt.INK, fontsize=9)
         ax2.axhline(0, color=bt.AXIS, lw=0.9)
         for y in (-3, 3):                                  # a factor 2 = single- against double-sided spectrum
             ax2.axhline(y, color=bt.MUTED, ls='--', lw=0.8)
         lim = np.ceil(max(spread)) + 1
         ax2.set_ylim(-lim, lim)
-        ax2.set_ylabel('ESA - HighFinesse (dB)\n(dashed: +-3 dB = factor 2)')
+        ax2.set_ylabel('ESA - HighFinesse\n(%s), dB\n(dashed: +-3 dB = factor 2)' % _hf_state(hf).split(',')[0])
         ax2.set_xlabel('Frequency (Hz)')
         for ax in (ax1, ax2):
             ax.set_xscale('log')
@@ -1333,13 +1439,20 @@ def _write_highfinesse(hf_group, cfg, hf, cmp):
     hf_group.attrs['image'] = hf['image'] or 'None'
     hf_group.attrs['header_json'] = json.dumps(hf['header'])
     hf_group.attrs['compared'] = ('ESA rin_dBc_Hz (binned) - HighFinesse averaged in linear units in the same '
-                                  'logarithmic bins, over the ESA frequency range')
+                                  'logarithmic bins, over the ESA frequency range, PLUS db_averaging_correction_dB')
+    hf_group.attrs['av_count'] = hf.get('av_count') if hf.get('av_count') is not None else -1
+    hf_group.attrs['db_averaging_correction_dB'] = float(hf.get('correction_db', 0.0))
+    hf_group.attrs['db_averaging_correction'] = hf.get('correction_text', '')
+    hf_group.attrs['db_averaging_doc'] = HF_AVERAGING_DOC
     hf_group.create_dataset('frequency_Hz', data=hf['f'], **ckw)
-    hf_group.create_dataset('rin_dB_Hz', data=hf['db'], **ckw)
-    fb, db = bin_highfinesse(hf, cfg.BINS_PER_DECADE)
+    hf_group.create_dataset('rin_dB_Hz', data=hf['db'], **ckw)                    # every FFT line, as exported
+    hf_group['rin_dB_Hz'].attrs['note'] = 'as exported (dB-averaged: noise reads 2.51 dB low on average)'
+    fb, db = bin_highfinesse(hf, cfg.BINS_PER_DECADE, corrected=True)
     bg = hf_group.create_group('binned')
+    bg.attrs['note'] = 'linear mean in the logarithmic bins; rin_corrected = rin_as_exported + db_averaging_correction_dB'
     bg.create_dataset('frequency_Hz', data=fb, **ckw)
-    bg.create_dataset('rin_dB_Hz', data=db, **ckw)
+    bg.create_dataset('rin_as_exported_dB_Hz', data=bin_highfinesse(hf, cfg.BINS_PER_DECADE, corrected=False)[1], **ckw)
+    bg.create_dataset('rin_corrected_dB_Hz', data=db, **ckw)
     for name, path in (('file_bytes', hf['file']), ('image_bytes', hf['image'])):
         if path and os.path.isfile(path):
             hf_group.create_dataset(name, data=np.frombuffer(open(path, 'rb').read(), np.uint8), compression='gzip')
@@ -1349,6 +1462,7 @@ def _write_highfinesse(hf_group, cfg, hf, cmp):
             g.create_dataset(col, data=c[key], **ckw)
         g.attrs['median_dB'] = c['median_db']
         g.attrs['bands_json'] = json.dumps(c['bands'])
+        g.attrs['highfinesse_db_averaging_correction_dB'] = c['correction_db']
 
 
 def load_rin_h5(path):
@@ -1370,13 +1484,16 @@ def load_rin_h5(path):
     return cfg, label, stamp, t_start, results
 
 
-def compare_saved(esa_h5, hf_txt, max_gap_min=30.0, show=False):
+def compare_saved(esa_h5, hf_txt, max_gap_min=30.0, show=False, db_averaging_correction=True):
     """Compare a saved ESA RIN measurement with a HighFinesse 'raw data' export (rin_compare_highfinesse.py).
-    Output in <folder of esa_h5>/<stamp>_vs_<HighFinesse file name>/ (see save_highfinesse_outputs). -> comparisons"""
+    Output in <folder of esa_h5>/<stamp>_vs_<HighFinesse file name>/ (see save_highfinesse_outputs). -> comparisons
+    db_averaging_correction: correct the HighFinesse for its dB averaging (HF_AVERAGING_DOC) - also for files measured
+    before this correction existed, since it only depends on the 'Av count' in the HighFinesse file."""
     cfg, label, stamp, t_start, results = load_rin_h5(esa_h5)
+    cfg.HIGHFINESSE_DB_AVERAGING_CORRECTION = bool(db_averaging_correction)
     if not cfg.BINS_PER_DECADE:
         raise ValueError('%s was saved with BINS_PER_DECADE = 0; the comparison needs logarithmic bins' % esa_h5)
-    hf = parse_highfinesse(hf_txt)
+    hf = prepare_highfinesse(cfg, parse_highfinesse(hf_txt))
     if hf['binned_export']:
         raise ValueError('%s is a "binned data" export (max / min per display point, no average): export the '
                          'HighFinesse spectrum as "raw data"' % hf_txt)
@@ -1393,7 +1510,7 @@ def compare_saved(esa_h5, hf_txt, max_gap_min=30.0, show=False):
     shutil.copy2(hf_txt, out)
     cmp = {name: compare_highfinesse(cfg, res, hf) for name, res in results.items()}
     for name, c in cmp.items():
-        print('[%s] ESA - HighFinesse (dB): %s' % (name, format_bands(c)))
+        print_compare(name, c, hf)
     save_highfinesse_outputs(cfg, label, stamp, results, hf, cmp, os.path.join(out, stamp + '_rin'), show)
     return cmp
 
@@ -1508,8 +1625,10 @@ def write_rin_h5(path, cfg, R, label, laser, background, results, log_idx, promp
         keithley_settings          attrs: what the Keithley reported back
         laser/sNN                  frequency_Hz, trace_dBm (as read from the ESA) + attrs (RBW, sweep time, v_dc before/after)
         background/sNN             the same with the laser blocked (what load_background() reads)
-    /highfinesse                   (COMPARE_HIGHFINESSE) the simultaneous HighFinesse file: frequency_Hz, rin_dB_Hz,
-                                   binned/..., header, the file and screenshot bytes, compared_<channel>/ (COMPARE_COLUMNS)
+    /highfinesse                   (COMPARE_HIGHFINESSE) the simultaneous HighFinesse file: frequency_Hz, rin_dB_Hz (as
+                                   exported), binned/rin_as_exported_dB_Hz + rin_corrected_dB_Hz, attrs av_count,
+                                   db_averaging_correction_dB (+ the text and HF_AVERAGING_DOC), header, the file and
+                                   screenshot bytes, compared_<channel>/ (COMPARE_COLUMNS)
     """
     ckw = dict(compression='gzip', compression_opts=6, shuffle=True)
     with h5py.File(path, 'w') as hf:
@@ -1598,7 +1717,9 @@ def run_measurement(R, label, background):
         os.makedirs(highfinesse_dir(cfg), exist_ok=True)
         bt.ask('HIGHFINESSE: START its RIN measurement now (same laser, other arm of the splitter), with averaging on.\n'
                '  The ESA measurement starts when you press ENTER; save the HighFinesse file ("raw data") and a\n'
-               '  screenshot AFTER it, in  %s' % highfinesse_dir(cfg))
+               '  screenshot AFTER it, in  %s\n'
+               '  (The HighFinesse averages in dB, so its noise reads low; the comparison corrects that using the\n'
+               '  Av count written in the HighFinesse file.)' % highfinesse_dir(cfg))
     t_start = time.time()
     laser = R.measure('laser')
     if cfg.COMPARE_HIGHFINESSE:
@@ -1611,7 +1732,7 @@ def run_measurement(R, label, background):
     if hfm:
         cmp = {name: compare_highfinesse(cfg, res, hfm) for name, res in results.items()}
         for name, c in cmp.items():
-            print('[%s] ESA - HighFinesse (dB): %s' % (name, format_bands(c)))
+            print_compare(name, c, hfm)
     print('\nSaving ...')
     write_rin_h5(base + '_data.h5', cfg, R, label, laser, background, results, log_idx, prompt_idx, hfm, cmp)  # data first
     R.last_h5 = base + '_data.h5'                          # holds the background: a kept session reuses it
