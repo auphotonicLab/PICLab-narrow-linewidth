@@ -31,14 +31,23 @@ Stage 1 - all NO-TEE references, one wiring pass (no bias tee, no Keithley)
     The EF500 stays on the receiver side from here on.
     X  (extra, STAGE1_ALSO_AC_COUPLED) 0 V sweep of B with the receiver AC-coupled (scope A50)
     Result: DC block insertion loss = P(B) - P(A); response vs DC level of the no-tee setup.
-    (An ESA only does the 0 V sweeps - it must never see DC.)
+    ESA: only B at 0 V (A is skipped - the SDG never reaches the ESA without the EF500).
 
-Stage 2 - bias tee, AC + DC  (receiver DC50, Keithley monitors the DC port)
-    Part A (tee_block): SDG -> bias tee -> EF500 -> receiver, all DC levels.
+Stage 2 - bias tee, AC + DC  (receiver DC-coupled, Keithley monitors the DC port)
+    Part A (tee_block): SDG -> bias tee -> EF500 -> receiver, all DC levels = what the photodetector does.
         Compared with stage 1 ref EF500 at the same DC level.
     Part B (tee_iso, scope only): SDG -> bias tee -> receiver (no EF500), all DC levels.
         Compared with stage 1 ref direct at the same DC level.
     => run STAGES_TO_RUN = [1, 2] in one go (the references are taken from memory).
+
+ESA check (MEASUREMENT = 'fsw', STAGES_TO_RUN = [1, 2]) - the FSW as the RIN measurement uses it
+    The ESA is DC-coupled for stage 1-B and 2-A, as in rin_measurement.py, and ONLY after you typed 'yes' for the EF500
+    directly at its input (it is AC-coupled while you re-wire, during stage 3 and at exit). RMS detector, ESA_ATTEN_DB.
+    DC levels are ramped in ESA_DC_RAMP_STEP_V steps (a DC step passes the capacitors as a transient).
+    Each stage is compared with the scope run SCOPE_REFERENCE_H5 (same cables, frequencies and VPP):
+        <timestamp>_stage<N>_vs_scope.csv / .pdf / .svg  (+ group esa_vs_scope in the h5)
+        ref EF500 0 V:  ESA - scope = the ESA's absolute level = the error of the RIN measured with it (+ = too high)
+        tee+EF500 at each DC level: ESA - scope, and the bias tee loss on the ESA vs on the scope
 
 Stage 3 - DC calibration (Keithley only, pure DC from the SDG, the receiver is not measured)
     A  SDG -> Keithley directly (BNC-to-banana)                 Keithley vs 2 x SDG offset = the SDG's own DC error
@@ -55,9 +64,10 @@ DC convention
 Safety
     * The Keithley is ALWAYS a 0 A source / high-Z voltmeter.  Never source voltage on the DC port: the 100 mH
       inductor is only rated for 9 mA.
-    * ESA with DC coupling (R&S FSW): the input must be protected against DC by you.  The script forces the SDG
-      output OFF while configuring, checks by read-back that the offset is 0 V before switching the output ON, and
-      refuses DC offsets while an ESA is DC-coupled.  The SDG output is switched OFF at every re-wiring prompt and at exit.
+    * ESA with DC coupling (R&S FSW): the input must be protected against DC by you - the EF500 directly at its input,
+      ALWAYS. DC coupling (and any DC offset) only after you typed 'yes' for it; AC-coupled while re-wiring and at exit.
+      The SDG output is OFF while configuring, its settings are verified by read-back, and it is switched OFF at every
+      re-wiring prompt and at exit.
     * Scope: 1 MOhm input => put a 50 ohm feed-through terminator on it.  Only 8 bit => the vertical scale is
       auto-adjusted so the signal fills ~6 divisions.
     * SSA3021X: starts at 9 kHz (lower points are skipped); no coupling command - check the input DC rating.
@@ -123,6 +133,12 @@ PASS_TOL_DB = 1.0                 # flat-response criterion relative to the refe
 # --- ESA settings ('fsw' / 'ssa') ---
 ESA_REF_LEVEL_DBM = 10
 ESA_NREAD = 2                     # sweeps per point (max of the peaks is reported)
+ESA_ATTEN_DB = 10                 # FSW input attenuation - same as rin_measurement.py (None = auto)
+ESA_DETECTOR = 'RMS'              # FSW detector - same as rin_measurement.py
+ESA_DC_RAMP_STEP_V = 0.1          # DC-coupled ESA: DC offsets are changed in steps of this size (SDG 50 ohm convention)
+ESA_DC_RAMP_SETTLE_S = 0.05       # wait per ramp step
+SCOPE_REFERENCE_H5 = (r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee\Bias_tee_no_1_full_charac_inc_DC'
+                      r'\2026-10-16_17-23-11_stage2_data.h5')   # ESA runs are compared with this scope run ('' = no comparison)
 
 # --- scope settings ('scope') ---
 SCOPE_CH = 1

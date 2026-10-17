@@ -81,6 +81,11 @@ def validate_config(cfg):
                          'use a smaller value' % (cfg.DC_PRECHECK_OFFSET_V, pre_mA, 1e3 * cfg.INDUCTOR_MAX_A))
     if not any(abs(l) < 1e-12 for l in cfg.PD_DC_LEVELS_V):
         raise ValueError('PD_DC_LEVELS_V must contain 0 (the pure-AC reference of every group), got %r' % (cfg.PD_DC_LEVELS_V,))
+    ref = getattr(cfg, 'SCOPE_REFERENCE_H5', None)
+    if cfg.MEASUREMENT != 'scope' and ref and not os.path.isfile(ref):
+        raise ValueError('SCOPE_REFERENCE_H5 not found: %s' % ref)
+    if cfg.MEASUREMENT != 'scope' and getattr(cfg, 'ESA_DC_RAMP_STEP_V', 0.1) > 0.25:
+        raise ValueError('ESA_DC_RAMP_STEP_V must be <= 0.25 V (each step reaches the DC-coupled ESA as a transient)')
     if cfg.MEASUREMENT == 'scope' and cfg.SCOPE_COUPLING.get('DC') != 'D50':
         print("WARNING: SCOPE_COUPLING['DC'] is %r - every main measurement is meant to use DC50 ('D50')." % cfg.SCOPE_COUPLING.get('DC'))
     for lvl in cfg.PD_DC_LEVELS_V:
@@ -108,6 +113,17 @@ def ask(msg):
     print('\n' + '=' * 78)
     print(msg)
     input('Press ENTER when done (Ctrl+C aborts)... ')
+
+
+def confirm_yes(msg):
+    """Safety question that needs the typed word 'yes' (ENTER alone is not enough); anything else aborts."""
+    PROMPT_LOG.append((datetime.now().isoformat(), msg))
+    print('\n' + '=' * 78)
+    print(msg)
+    ans = input("Type 'yes' + ENTER to confirm (anything else aborts): ").strip().lower()
+    PROMPT_LOG.append((datetime.now().isoformat(), 'answer: %r' % ans))
+    if ans != 'yes':
+        raise RuntimeError('Not confirmed (answer %r) - the ESA stays AC-coupled, aborting.' % ans)
 
 
 class Tee:
@@ -232,7 +248,8 @@ class Setup:
         self.kind = cfg.MEASUREMENT
         self.is_scope = (self.kind == 'scope')
         self.rx_coupling = None
-        self.rx_dc_coupled = None        # True only for a DC-coupled ESA input => no DC allowed
+        self.rx_dc_coupled = None        # True only for a DC-coupled ESA input => DC only behind a confirmed DC block
+        self.dc_block_confirmed = False  # ESA: the EF500 at its input was confirmed (typed 'yes') for the present wiring
         self.rx_text = ('scope CH%d (50 ohm input)' % cfg.SCOPE_CH
                         if self.is_scope else RECEIVER_NAMES[self.kind])
         self.last_vdiv = None
@@ -273,6 +290,15 @@ class Setup:
             print('ESA:', self.recv_idn)
             rl_cmd = 'DISP:TRAC:Y:RLEV ' if self.kind == 'fsw' else ':DISP:WIND:TRAC:Y:SCAL:RLEV '
             self.recv.instr.write(rl_cmd + str(cfg.ESA_REF_LEVEL_DBM))
+        if self.kind == 'fsw':
+            print('FSW input coupling found: %s -> AC until the DC block is confirmed' % self.recv.GetCoupling())
+            self.set_rx_coupling('AC')
+            w = self.recv.instr.write                      # as the RIN measurement (rin_utils.EsaFSW), no averaging
+            w('DISP:TRAC1:MODE WRIT')
+            w('DET %s' % getattr(cfg, 'ESA_DETECTOR', 'RMS'))
+            att = getattr(cfg, 'ESA_ATTEN_DB', None)
+            w('INP:ATT:AUTO ON' if att is None else 'INP:ATT %g' % att)
+            w('SWE:TYPE AUTO')
         self.afg_idn = self.afg.instr.query('*IDN?').strip()
 
         # 3) Keithley as high-Z DC monitor
@@ -319,7 +345,8 @@ class Setup:
                              'TRDL?', 'SARA?', 'MSIZ?', 'TRMD?', 'ACQW?', 'SANU? ' + sc]
         elif self.kind == 'fsw':
             q['receiver'] = ['*IDN?', 'INP:COUP?', 'DISP:TRAC:Y:RLEV?', 'FREQ:CENT?', 'FREQ:SPAN?', 'BAND?',
-                             'BAND:VID?', 'SWE:POIN?', 'SWE:COUN?', 'INP:ATT?']
+                             'BAND:VID?', 'SWE:POIN?', 'SWE:COUN?', 'INP:ATT?', 'DET?', 'DISP:TRAC1:MODE?', 'SWE:TYPE?',
+                             'SWE:TYPE:USED?']
         else:
             q['receiver'] = ['*IDN?', ':FREQ:CENT?', ':FREQ:SPAN?', ':DISP:WIND:TRAC:Y:SCAL:RLEV?', ':POW:ATT?',
                              ':BWID?', ':BWID:VID?', ':UNIT:POW?', ':SWE:COUN?', ':SWE:TIME?', ':DET:TRAC1:FUNC?']
@@ -348,6 +375,8 @@ class Setup:
     def set_rx_coupling(self, coupling):
         cfg = self.cfg
         assert coupling in ('AC', 'DC')
+        if coupling == 'DC' and not self.is_scope and not self.dc_block_confirmed:
+            raise RuntimeError('Refusing DC coupling of the ESA: the DC block at its input was not confirmed (esa_rewire)')
         self.afg_output_off()                       # never change coupling with signal/DC present
         if self.is_scope:
             self.recv.SetChannel(cfg.SCOPE_CH, coupling=cfg.SCOPE_COUPLING[coupling], vdiv=self.last_vdiv or 0.1,
@@ -366,6 +395,32 @@ class Setup:
             self.rx_dc_coupled = (coupling == 'DC')
         self.rx_coupling = coupling
 
+    def esa_rewire(self, wiring_msg):
+        """ESA: AC-coupled (and SDG off) while you re-wire; DC coupling only after typing 'yes' for the DC block.
+        The ESA is DC-coupled for every measurement (as in the RIN measurement), so the EF500 at its input is mandatory."""
+        self.set_rx_coupling('AC')
+        self.dc_block_confirmed = False
+        ask(wiring_msg)
+        confirm_yes('*** ESA SAFETY CHECK ***\n'
+                    '  The %s input will now be switched to DC coupling (needed below ~10 MHz).\n'
+                    '  A DC-coupled ESA input must never see DC - it destroys the input.\n'
+                    '  Is the EF500 DC block connected DIRECTLY at the ESA RF input?' % self.rx_text)
+        self.dc_block_confirmed = True
+        self.set_rx_coupling('DC')
+
+    def _ramp_dc(self):
+        """DC changes are ramped in ESA_DC_RAMP_STEP_V steps while a DC-coupled ESA sits behind the DC block: a DC step
+        passes the coupling capacitors (bias tee, EF500) as a transient of the same size - as when a laser is unblocked."""
+        return self.rx_dc_coupled and not self.is_scope
+
+    def ramp_offset(self, freq, vpp, start, stop):
+        """SDG output ON: offset start -> stop in steps of ESA_DC_RAMP_STEP_V (each verified by read-back)."""
+        step = float(getattr(self.cfg, 'ESA_DC_RAMP_STEP_V', 0.1))
+        n = int(np.ceil(abs(stop - start) / step - 1e-9))
+        for v in np.linspace(start, stop, n + 1)[1:]:
+            self.set_tone(freq, vpp, round(float(v), 3))
+            time.sleep(float(getattr(self.cfg, 'ESA_DC_RAMP_SETTLE_S', 0.05)))
+
     # ---- SDG -------------------------------------------------------------------
     def afg_output_off(self):
         self.afg.output_status(channel=self.cfg.AFG_CH, status='OFF')
@@ -373,8 +428,8 @@ class Setup:
     def set_tone(self, freq, vpp, offset):
         """Configure the SDG (offset is verified by read-back before anything is switched on)."""
         cfg = self.cfg
-        if self.rx_dc_coupled and abs(offset) > 0:
-            raise RuntimeError('Refusing DC offset %g V while the ESA is DC-coupled' % offset)
+        if self.rx_dc_coupled and abs(offset) > 0 and not self.dc_block_confirmed:
+            raise RuntimeError('Refusing DC offset %g V: the ESA is DC-coupled and no DC block was confirmed' % offset)
         self.afg.instr.write('C%d:OUTP LOAD,%s' % (cfg.AFG_CH, cfg.AFG_LOAD))      # load first, then amplitude/offset
         self.afg.setParameters(channel=cfg.AFG_CH, waveform='SINE', frequency=freq, vpp=vpp,
                                offset=offset, load=cfg.AFG_LOAD)
@@ -383,8 +438,8 @@ class Setup:
     def set_dc(self, offset):
         """SDG in pure DC mode (no AC) at `offset` (50 ohm convention), verified by read-back. Output state unchanged."""
         cfg = self.cfg
-        if self.rx_dc_coupled and abs(offset) > 0:
-            raise RuntimeError('Refusing DC offset %g V while the ESA is DC-coupled' % offset)
+        if self.rx_dc_coupled and abs(offset) > 0 and not self.dc_block_confirmed:
+            raise RuntimeError('Refusing DC offset %g V: the ESA is DC-coupled and no DC block was confirmed' % offset)
         ch = 'C%d' % cfg.AFG_CH
         self.afg.instr.write('%s:OUTP LOAD,%s' % (ch, cfg.AFG_LOAD))       # load first, then offset
         self.afg.setParameters(channel=cfg.AFG_CH, waveform='DC', offset=offset, load=cfg.AFG_LOAD)
@@ -412,8 +467,8 @@ class Setup:
             raise RuntimeError('SDG read-back mismatch: asked f=%g amp=%g ofst=%g, got "%s"' % (freq, vpp, offset, resp.strip()))
         if not re.search(r'LOAD,\s*%s\b' % cfg.AFG_LOAD, outp):
             raise RuntimeError('SDG load is not %s ohm: "%s"' % (cfg.AFG_LOAD, outp.strip()))
-        if self.rx_dc_coupled and abs(ofst) > 1e-3:
-            raise RuntimeError('DC offset present with DC-coupled ESA!')
+        if self.rx_dc_coupled and abs(ofst) > 1e-3 and not self.dc_block_confirmed:
+            raise RuntimeError('DC offset present with DC-coupled ESA and no confirmed DC block!')
 
     # ---- DC monitor ------------------------------------------------------------
     def read_dc(self):
@@ -579,7 +634,10 @@ class Setup:
                 'Output switched off, the real DC level was NOT applied.'
                 % (v, exp, pre, 1e3 * cfg.DC_AT_TEE_FACTOR * abs(pre) / (50.0 + cfg.DC_PORT_SERIES_R_OHM)))
         print('  DC pre-check OK: Keithley %.3f V at %.2f V offset (expected %.3f V) -> applying %.2f V' % (v, pre, exp, offset))
-        self.set_tone(f, vpp, offset)
+        if self._ramp_dc():
+            self.ramp_offset(f, vpp, pre, offset)
+        else:
+            self.set_tone(f, vpp, offset)
 
     # ---- one sweep ---------------------------------------------------------------
     def sweep(self, label, offset=0.0, vpp=None, monitor_dc=False):
@@ -598,13 +656,16 @@ class Setup:
                'points': [None] * len(freqs), 'screenshots': [], 't_start': datetime.now().isoformat()}
         fmin = MIN_FREQ_HZ[self.kind]
         self.afg_output_off()
+        ramp = self._ramp_dc() and abs(offset) > 0                  # DC-coupled ESA behind the DC block: no DC steps
+        f_on = None                                                 # frequency while the output is on
         try:
             first = True
             for i, f in enumerate(freqs):
                 if f < fmin:
                     print('  [%s] %10.0f Hz  skipped (minimum %g Hz)' % (label, f, fmin))
                     continue
-                self.set_tone(f, vpp, offset)                        # configure (output still OFF on the first point)
+                # configure (output still OFF on the first point; with ramp it is switched on at 0 V offset)
+                self.set_tone(f, vpp, 0.0 if (first and ramp) else offset)
                 if first:
                     res['settings'] = self.settings_snapshot()      # all instrument settings, output still OFF
                     if monitor_dc:
@@ -613,7 +674,10 @@ class Setup:
                         self.dc_precheck(f, vpp, offset)            # low-DC test first; ends with the output ON at `offset`
                     else:
                         self.afg.output_status(channel=cfg.AFG_CH, status='ON')
+                        if ramp:
+                            self.ramp_offset(f, vpp, 0.0, offset)
                     first = False
+                f_on = f
                 res['afg_readback'][i] = self.last_afg_readback
                 time.sleep(cfg.SETTLE_S)
                 msg = ''
@@ -648,6 +712,8 @@ class Setup:
                     if len(self.stage_screenshots) > n_before:
                         res['screenshots'].append({'tag': self.stage_screenshots[-1][0],
                                                    'path': self.stage_screenshots[-1][1], 'index': i})
+            if ramp and f_on is not None:                           # normal end: DC down gently, then off.
+                self.ramp_offset(f_on, vpp, offset, 0.0)            # (after an error: OFF at once - the inductor first)
         finally:
             self.afg_output_off()
             res['t_end'] = datetime.now().isoformat()
@@ -657,6 +723,8 @@ class Setup:
     def close(self):
         for fn in (lambda: self.afg_output_off(),
                    lambda: self.afg.instr.write('C%d:BSWV OFST,+0' % self.cfg.AFG_CH),
+                   lambda: self.kind == 'fsw' and self.recv.SetCoupling('AC'),          # leave the ESA DC-safe
+                   lambda: self.kind == 'fsw' and print('FSW input coupling at exit: %s' % self.recv.GetCoupling()),
                    lambda: self.keithley and self.keithley.SwitchOff(),
                    lambda: self.keithley and self.keithley.CloseConnection(),
                    lambda: self.afg.CloseConnection(),
@@ -764,13 +832,13 @@ def _base(sweeps):
 
 
 def _rx_main_coupling(S):
-    """Coupling of every MAIN measurement: scope DC50 (always); an ESA stays AC-coupled behind the EF500 (DC risk).
-    AC50 on the scope is only ever used for the optional extra sweep (STAGE1_ALSO_AC_COUPLED)."""
-    return 'DC' if S.is_scope else 'AC'
+    """Coupling of every MAIN measurement: DC. Scope: DC50. ESA: DC-coupled like in the RIN measurement, ALWAYS behind the
+    EF500 (esa_rewire: only after typing 'yes'). AC50 on the scope only for the optional extra sweep."""
+    return 'DC'
 
 
 def _cpl_text(S):
-    return 'DC-coupled, 50 ohm (DC50)' if S.is_scope else 'AC-coupled'
+    return 'DC-coupled, 50 ohm (DC50)' if S.is_scope else 'DC-coupled, EF500 directly at its input'
 
 
 def _ref_group(S, name, group, levels, direct, title, done=()):
@@ -799,8 +867,20 @@ def stage1(S):
          1-B  SDG -> EF500 -> receiver        'ref EF500 DC x V'   (group ref_ac)   pure AC (0 V) + every DC level
        Receiver DC-coupled (scope: DC50) for both.  The EF500 then stays on the receiver for stage 2.
        Optional EXTRA (STAGE1_ALSO_AC_COUPLED): the 0 V EF500 sweep again with the receiver AC-coupled (scope: AC50).
-       An ESA only does the 0 V sweeps (it must never see DC)."""
+       An ESA only does 1-B at 0 V, DC-coupled as in the RIN measurement: the SDG never reaches its input without the
+       EF500 (1-A is skipped). Compared with the scope's 'ref EF500 DC 0.00 V' = the ESA's absolute level (SCOPE_REFERENCE_H5)."""
     cfg = S.cfg
+    if not S.is_scope:
+        title = 'Stage 1: ESA reference (EF500)'
+        S.esa_rewire('STAGE 1 (ESA reference: EF500)\n'
+                     '  Bias tee and Keithley NOT connected to anything in this stage.\n'
+                     '  SDG CH%d  ->  EF500 DC block  ->  %s RF input\n'
+                     '  Same cables / adapters as the scope reference "ref EF500" (only the receiver changes).\n'
+                     '  The EF500 stays at the ESA input for stage 2. (The direct reference 1-A is skipped for an ESA.)'
+                     % (cfg.AFG_CH, S.rx_text))
+        B = _ref_group(S, 'ref EF500 DC', 'ref_ac', [0], False, title)
+        return {'stage': 1, 'title': title, 'sweeps': B, 'pairs': [], 'monitor_dc': False, 'color_mode': 'categorical',
+                'what': 'ESA reference through the EF500 (compared with the scope reference below)'}
     title = 'Stage 1: references (direct, EF500)'
     levels = _levels(S)
     S.set_rx_coupling('DC')
@@ -872,18 +952,16 @@ def stage2(S):
         return out
 
     # --- Part A: bias tee + EF500 ---
-    if not S.is_scope:
-        ask('*** ESA SAFETY CHECK ***\n'
-            '  The EF500 DC block MUST be connected between the bias tee AC port and the ESA input.\n'
-            '  Without it, the DC offset will reach the ESA input and may damage it.\n'
-            '  Confirm the EF500 is in place before continuing.')
-        ask('*** CONFIRM AGAIN ***\n'
-            '  Double-check: EF500 DC block is between the bias tee AC out and the ESA input. OK?')
-    S.set_rx_coupling(coupling)
+    wiring = ('STAGE 2-A (bias tee + EF500)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V, cpl=_cpl_text(S)) +
+              '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
+              % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
     S.keithley.AssertHighZ()
-    ask('STAGE 2-A (bias tee + EF500)\n' + tee_wiring_text(cfg, S.rx_text, cfg.PD_DC_LEVELS_V, cpl=_cpl_text(S)) +
-        '\n  Levels (PD output into 50 ohm): %s V -> Keithley should read ~%g x these.'
-        % (list(cfg.PD_DC_LEVELS_V), cfg.DC_AT_TEE_FACTOR))
+    if S.is_scope:
+        S.set_rx_coupling(coupling)
+        ask(wiring)
+    else:                         # as with the photodetector: sine + DC into the tee, DC port on the Keithley, EF500 at the ESA
+        S.esa_rewire(wiring + '\n  The ESA is DC-coupled; DC changes are ramped in %g V steps (transients through the '
+                              'capacitors).' % getattr(cfg, 'ESA_DC_RAMP_STEP_V', 0.1))
     tee_block_sweeps = []
     for lvl in cfg.PD_DC_LEVELS_V:
         sw = S.sweep('tee+EF500 DC %.2f V' % lvl, offset=lvl, monitor_dc=True)
@@ -970,6 +1048,9 @@ def stage3(S):
     cfg = S.cfg
     levels = sorted(set(float(l) for l in cfg.PD_DC_LEVELS_V))
     S.stage3_rows = {'direct': [], 'tee': []}
+    if not S.is_scope:                     # the receiver is not measured here: keep an ESA AC-coupled (DC-safe)
+        S.set_rx_coupling('AC')
+        S.dc_block_confirmed = False
     ask('STAGE 3-A (DC calibration: SDG directly into the Keithley)\n'
         '  Bias tee NOT connected.\n'
         '  SDG CH%d (50 ohm mode)  ->  BNC-to-banana cable  ->  Keithley 2450 FRONT  HI (centre) / LO (shield)\n'
@@ -1934,6 +2015,134 @@ def load_stage_result(h5_path):
 # Run one stage and save everything
 # =============================================================================
 
+# =============================================================================
+# ESA vs scope: the ESA's absolute level and the bias tee as seen by the ESA (SCOPE_REFERENCE_H5)
+# =============================================================================
+
+def load_scope_reference(path, freqs):
+    """Scope stage-1/2 file -> ({(sweep_group, DC level): P dBm on freqs}, its VPP). Interpolated in log(f), NaN outside."""
+    out = {}
+    with h5py.File(path, 'r') as h:
+        c = h['config'].attrs
+        if str(c['MEASUREMENT']) != 'scope':
+            raise ValueError('%s was not measured on the scope' % path)
+        vpp = float(c['VPP'])
+        for key in h['sweeps']:
+            g = h['sweeps'][key]
+            grp = str(g.attrs.get('sweep_group', ''))
+            if grp in ('ref_ac', 'tee_block'):
+                f, p = g['frequency_Hz'][()], g['p_dbm'][()]
+                ok = np.isfinite(p)
+                out[(grp, round(float(g.attrs.get('offset_V', 0.0)), 6))] = np.interp(
+                    np.log10(freqs), np.log10(f[ok]), p[ok], left=np.nan, right=np.nan)
+    return out, vpp
+
+
+def compare_esa_with_scope(cfg, res):
+    """ESA sweeps of this stage vs the same sweeps on the scope -> table dict (None if nothing to compare).
+
+        ref_fsw_minus_scope       ref EF500 0 V: the ESA's absolute level (+ = ESA reads high = RIN reads high by as much)
+        tee_<L>V_fsw_minus_scope  tee+EF500 at DC level L (sine + DC into the tee, DC port on the Keithley)
+        tee_loss_<L>V_fsw / _scope / _diff   loss of the bias tee = ref EF500 0 V - tee+EF500 at L, on each receiver"""
+    path = getattr(cfg, 'SCOPE_REFERENCE_H5', None)
+    if not path:
+        return None
+    freqs = np.asarray(cfg.FREQUENCIES_HZ, float)
+    scope, vpp = load_scope_reference(path, freqs)
+    if abs(vpp - cfg.VPP) > 1e-6:
+        print('WARNING: the scope reference was measured with VPP = %g V, this run with %g V - the levels differ by '
+              '%.2f dB' % (vpp, cfg.VPP, 20 * np.log10(cfg.VPP / vpp)))
+    esa = {(r.get('sweep_group'), round(float(r['offset']), 6)): r['p_dbm'] for r in res['sweeps']
+           if r.get('sweep_group') in ('ref_ac', 'tee_block')}
+    t = {'frequency_Hz': freqs}
+    ref_e, ref_s = esa.get(('ref_ac', 0.0)), scope.get(('ref_ac', 0.0))
+    if ref_e is not None and ref_s is not None:
+        t['ref_fsw_dBm'], t['ref_scope_dBm'], t['ref_fsw_minus_scope_dB'] = ref_e, ref_s, ref_e - ref_s
+    for (grp, lvl), p in sorted(esa.items(), key=lambda kv: kv[0][1]):
+        if grp != 'tee_block' or (grp, lvl) not in scope:
+            continue
+        s, tag = scope[(grp, lvl)], 'tee_%.2fV' % lvl
+        t[tag + '_fsw_minus_scope_dB'] = p - s
+        if ref_e is not None and ref_s is not None:
+            t[tag + '_loss_fsw_dB'], t[tag + '_loss_scope_dB'] = ref_e - p, ref_s - s
+            t[tag + '_loss_diff_dB'] = (ref_e - p) - (ref_s - s)
+    return t if len(t) > 1 else None
+
+
+def print_esa_vs_scope(t):
+    f = t['frequency_Hz']
+    decades = [(a, 10 * a) for a in (1e3, 1e4, 1e5, 1e6)]
+    head = ''.join('%14s' % ('%s-%s' % (_hz_text(a), _hz_text(b))) for a, b in decades)
+    print('\nESA vs scope (dB, mean per decade)%s\n%-32s%s' % ('' if 'ref_fsw_minus_scope_dB' in t else
+                                                           ' - no ESA ref EF500 0 V in this stage', '', head))
+    for key in t:
+        if key.endswith('_minus_scope_dB') or key.endswith('_loss_diff_dB'):
+            vals = ''.join('%+14.2f' % np.nanmean(t[key][(f >= a) & (f <= b)]) for a, b in decades)
+            print('%-32s%s' % (key, vals))
+    if 'ref_fsw_minus_scope_dB' in t:
+        print('  => ref_fsw_minus_scope = the error of the RIN measured with this ESA (+ = RIN too high), if the scope is '
+              'right;\n     tee_x_loss_diff = how differently the ESA sees the bias tee at DC level x.')
+
+
+def _hz_text(x):
+    scale, unit = _hz_unit(x)
+    return '%g%s' % (x / scale, unit)
+
+
+def make_esa_vs_scope_report(cfg, t, title, base_path, show=False):
+    f = t['frequency_Hz']
+    tees = [k[:-len('_fsw_minus_scope_dB')] for k in t if k.startswith('tee_') and k.endswith('_fsw_minus_scope_dB')]
+    ramp = _seq_colors(max(len(tees), 1))
+    with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 7.0), sharex=True)
+        fig.patch.set_facecolor(SURFACE)
+        if 'ref_fsw_minus_scope_dB' in t:
+            ax1.plot(f, t['ref_fsw_minus_scope_dB'], '-o', color=CATEGORICAL[1], ms=4, lw=2.0,
+                     label='SDG -> EF500 (0 V): ESA absolute level')
+        for c, tag in zip(ramp, tees):
+            ax1.plot(f, t[tag + '_fsw_minus_scope_dB'], '-^', color=c, ms=3, lw=1.0, label='SDG -> tee -> EF500, %s' % tag[4:])
+            if tag + '_loss_diff_dB' in t:
+                ax2.plot(f, t[tag + '_loss_diff_dB'], '-^', color=c, ms=3, lw=1.2, label='DC %s' % tag[4:])
+        ax1.set_ylabel('ESA - scope (dB)\n(+ = RIN reads high)')
+        ax1.set_title(title, loc='left', color=INK, fontsize=10)
+        ax2.set_ylabel('Bias tee loss: ESA - scope (dB)')
+        ax2.set_xlabel('Frequency (Hz)')
+        for ax in (ax1, ax2):
+            ax.axhline(0, color=AXIS, lw=0.9)
+            ax.set_xscale('log')
+            _style_axes(ax)
+            if ax.get_legend_handles_labels()[0]:
+                ax.legend(fontsize=8, frameon=False, labelcolor=INK2)
+        fig.tight_layout()
+        for ext in ('pdf', 'svg'):
+            fig.savefig('%s.%s' % (base_path, ext), bbox_inches='tight', facecolor=fig.get_facecolor())
+            print('  Saved: %s.%s' % (base_path, ext))
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+
+def save_esa_vs_scope(cfg, t, run_folder, base, label, stage):
+    """Print, <base>_vs_scope.csv / .pdf / .svg and the group 'esa_vs_scope' in <base>_data.h5."""
+    print_esa_vs_scope(t)
+    with open(os.path.join(run_folder, base + '_vs_scope.csv'), 'w', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(list(t))
+        for row in zip(*t.values()):
+            w.writerow(['%.6g' % x for x in row])
+    with h5py.File(os.path.join(run_folder, base + '_data.h5'), 'a') as hf:
+        g = hf.create_group('esa_vs_scope')
+        g.attrs['scope_reference'] = cfg.SCOPE_REFERENCE_H5
+        g.attrs['doc'] = compare_esa_with_scope.__doc__
+        for k, v in t.items():
+            g.create_dataset(k, data=v)
+    make_esa_vs_scope_report(cfg, t, 'Stage %d: %s vs scope   %s   %s\nscope reference: %s'
+                             % (stage, RECEIVER_NAMES[cfg.MEASUREMENT], label, base[:19],
+                                os.path.basename(cfg.SCOPE_REFERENCE_H5)),
+                             os.path.join(run_folder, base + '_vs_scope'), show=cfg.SHOW_PLOTS)
+
+
 def run_stage(S, stage, run_folder, label):
     """Run `stage`, then write  <timestamp>_stage<N>_data.h5 / .csv / _report.pdf / _report.svg / screenshots  to run_folder."""
     cfg = S.cfg
@@ -1969,6 +2178,13 @@ def run_stage(S, stage, run_folder, label):
             fn(cfg, res, os.path.join(run_folder, base + suffix), show=cfg.SHOW_PLOTS)
         except Exception as e:                       # a plotting problem must never lose the measurement
             print('  warning: %s failed (%s) - the data are saved in the h5 file' % (fn.__name__, e))
+    if not S.is_scope:
+        try:
+            t = compare_esa_with_scope(cfg, res)
+            if t is not None:
+                save_esa_vs_scope(cfg, t, run_folder, base, label, stage)
+        except Exception as e:
+            print('  warning: comparison with the scope reference failed (%s)' % e)
     print('\nStage %d saved in %s' % (stage, run_folder))
     with open(os.path.join(run_folder, base + '_log.txt'), 'w', encoding='utf-8') as fh:
         fh.write('\n'.join(S.tee.lines[S.log_idx:]) + '\n')
