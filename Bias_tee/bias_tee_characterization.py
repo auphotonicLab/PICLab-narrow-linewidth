@@ -74,7 +74,7 @@ import bias_tee_utils as bt
 # =============================================================================
 # Settings
 # =============================================================================
-STAGES_TO_RUN = [1, 2]        # run both together so stage 2 can use stage 1 references in memory. Stage 2 needs the Keithley.
+STAGES_TO_RUN = [1, 2, 3]        # run both together so stage 2 can use stage 1 references in memory. Stage 2 needs the Keithley.
                               # [3] = DC calibration only (Keithley direct vs through the bias tee), see stage 3 above.
 MEASUREMENT = 'scope'             # receiver: 'scope' = Siglent SDS2352X-E, 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X
 

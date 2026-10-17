@@ -14,7 +14,7 @@ Wiring of one channel (CHANNELS: one entry per detector; add a second entry to m
     bias tee DC output  ->  Keithley 2450 HI / LO (0 A source = high-Z voltmeter)
 
 How to use
-    1. Fill in CHANNELS (IP addresses, detector responsivity and gain) and SAVE_FOLDER.
+    1. Fill in CHANNELS (IP addresses) and SAVE_FOLDER.
     2. Run the script. A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/ :
            <timestamp>_rin_data.h5           all data (raw ESA traces, background, DC readings, settings, script sources)
            <timestamp>_rin_<channel>.csv     every ESA point: frequency, ESA noise, optical noise, RIN
@@ -22,7 +22,9 @@ How to use
            <timestamp>_rin.pdf/.svg          RIN + the ESA noise density it was computed from (binned)
            <timestamp>_rin_<channel>_esa.png screenshot of the ESA
            <timestamp>_rin_log.txt           console log
-    3. Answer the questions (DC block, block the laser for the background; Keithley unplug / reconnect only if it
+    3. Pick the calibrations in the pop-ups (photodetector *_HiZ.h5, bias tee characterization folder; once per
+       session, Cancel = none - see pd_cal / bias_tee_cal in CHANNELS).
+       Answer the questions (DC block, block the laser for the background; Keithley unplug / reconnect only if it
        is not in high-Z mode). Then N_MEASUREMENTS are taken in a row without any question; afterwards you can ask
        for more (same or new label, any number) and still nothing is asked again, reset or re-wired.
 
@@ -39,13 +41,15 @@ Session (what is asked when the script is started again)
 
 What is computed (rin_utils.compute_rin)
     DC: no current flows in the DC path, so the Keithley reads the OPEN-CIRCUIT (Hi-Z) detector voltage
-            P_avg = (V_dc - V_dark) / (G R)                     G = transimpedance gain into Hi-Z, R = responsivity
+            P_avg = (V_dc - V_dark) / K          K = V/W of the photodetector characterization (or G x R); V_dc is
+                                                 corrected to the reading without the bias tee (its stage 3)
     AC: the ESA (50 ohm) and the 50 ohm output resistor of the detector halve the voltage, the trace is power in the RBW
             S_voc(f) = P_esa(f) / (1.065 RBW) x loss x 50 ohm x 4            V^2/Hz open-circuit detector voltage noise
-            S_P(f)   = S_voc / (G R)^2                                      W^2/Hz optical power noise
+            S_P(f)   = S_voc / K^2                                          W^2/Hz optical power noise
             RIN(f)   = S_P / P_avg^2                                        1/Hz, single-sided -> dBc/Hz
-    G and R cancel in RIN: they only set the absolute optical powers (and G the shot-noise line). What does matter is
-    the factor 4 (Hi-Z DC against 50 ohm AC), the AC path loss of bias tee + DC block and the noise bandwidth of the RBW.
+    K cancels in RIN: it only sets the absolute optical powers (and the TIA gain the shot-noise line). What does
+    matter is the factor 4 (Hi-Z DC against 50 ohm AC), the AC path loss of bias tee + DC block (stage 2 of its
+    characterization) and the noise bandwidth of the RBW.
     The background (laser blocked) is subtracted in linear power; points less than MIN_ABOVE_BACKGROUND_DB above it are
     dropped from 'rin' (the csv / h5 also hold the RIN as measured and the floor).
 
@@ -74,18 +78,22 @@ CHANNELS = [
     dict(name='PD1',
          esa='fsw', esa_ip='192.168.1.7',        # 'fsw' = R&S FSW50, 'ssa' = Siglent SSA3021X (>= 9 kHz, untested here)
          keithley_ip='192.168.1.151',            # Keithley 2450 on this bias tee's DC port
-         pd_model='',                            # free text, saved with the data
+         pd_model='',                            # detector + fibre adapter as in the pd_cal file name, e.g. 'PDA05CF2_SM1FCA2'
+                                                 # ('' = no check). The V/mW depends on the adapter: a warning if they differ
          wavelength_nm=None,                     # free, saved with the data
-         responsivity_A_W=None,                  # photodiode responsivity at the laser wavelength (data sheet curve)
-         transimpedance_V_A=None,                # transimpedance gain into HIGH-Z at the gain setting used (= 2 x the "50 ohm" value)
+         pd_cal='ask',                           # photodetector characterization (Photodetector/photodetector_characterization.py,
+                                                 # *_HiZ.h5): its measured V/W gives the optical power, its TIA gain the shot
+                                                 # noise. 'ask' = pop-up once per session (Cancel = none), a path, or None
+         responsivity_A_W=None,                  # only without pd_cal: responsivity at the laser wavelength (data sheet curve)
+         transimpedance_V_A=None,                # only without pd_cal: transimpedance gain into HIGH-Z (PDA05CF2: 10 kV/A)
          pd_output_ohm=50.0,                     # series output resistor of the detector
          pd_max_hiz_V=10.0,                      # saturation into Hi-Z
          dark_offset_V=0.0,                      # only used with BACKGROUND = 'none' (otherwise measured)
-         ac_path_loss_db=r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee\Bias_tee_no_1_charac_cable_setup'
-                         r'\2026-10-13_14-36-55_stage2_data.h5',
-                                                 # loss of bias tee + DC block: dB, (freqs_Hz, loss_dB), or the path of a
-                                                 # bias_tee_characterization stage-2 *_data.h5 (frequency dependent; this
-                                                 # one: bias tee no. 1 + EF500, 0.37 - 0.58 dB)
+         bias_tee_cal='ask',                     # bias tee characterization FOLDER (bias_tee_characterization.py): stage 2 =
+                                                 # loss of bias tee + DC block vs frequency, stage 3 = DC reading through the
+                                                 # tee vs direct. 'ask' = pop-up once per session (Cancel = none), a folder
+                                                 # (or one stage-2 *_data.h5), or None
+         ac_path_loss_db=0.0,                    # only without bias_tee_cal: loss in dB, or (freqs_Hz, loss_dB)
          noise_bw_factor=1.065),                 # noise bandwidth of the RBW filter / RBW (Gaussian filter: 1.065)
     # dict(name='PD2', esa='ssa', esa_ip='192.168.1.11', keithley_ip='192.168.1.xxx', ...),
 ]
@@ -93,6 +101,9 @@ CHANNELS = [
 # --- saving ---
 SAVE_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\RIN'
 DEFAULT_SAVE_LABEL = ''           # pre-filled text in the label pop-up
+PD_CAL_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'    # where the pd_cal pop-up opens
+BIAS_TEE_CAL_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee'   # where the bias_tee_cal pop-up opens
+                                                                                # (inside its newest characterization)
 SAVE_SCREENSHOTS = True           # ESA screenshot after each measurement
 SHOW_PLOTS = True                 # show the RIN plot after each measurement
 
@@ -126,6 +137,20 @@ ESA_TIMEOUT_MS = 1800000          # one averaged sweep must finish within this
 BINS_PER_DECADE = 50              # plot / *_binned.csv: average in logarithmic frequency bins (0 = every ESA point)
 ESA_AC_COUPLED_AT_EXIT = True     # leave the ESA AC-coupled (DC-safe) when the script ends
 DC_BLOCK_NAME = 'Thorlabs EF500 DC block'
+
+# --- HighFinesse comparison: a HighFinesse LWA RIN measurement at the same time, on the other arm of a splitter ---
+# (RIN is normalized to the average power, so the split ratio does not matter - only shot noise differs between the arms)
+COMPARE_HIGHFINESSE = True       # True: every measurement asks you to start the HighFinesse measurement before the ESA sweep
+                                  # and to save its RIN .txt + a screenshot afterwards. Save it as "raw data" ("binned data"
+                                  # has only a max / min pair per point above ~60 kHz and is refused). The newest .txt and
+                                  # screenshot saved after the ESA start are used and copied to the label folder:
+                                  #   <timestamp>_rin_highfinesse.txt / _highfinesse_screenshot.png   the files
+                                  #   <timestamp>_rin_highfinesse.pdf/.svg      HighFinesse RIN, same axes as _rin.pdf/.svg
+                                  #   <timestamp>_rin_vs_highfinesse.pdf/.svg   both + ESA - HighFinesse in the same bins
+                                  #   <timestamp>_rin_vs_highfinesse_<channel>.csv
+                                  # Compare again later (other HighFinesse file): rin_compare_highfinesse.py
+HIGHFINESSE_FOLDER = 'HighFinesse'   # where you save them: a folder name = next to the label folders (in SAVE_FOLDER),
+                                     # or an absolute path
 
 # --- background (laser blocked): noise floor of detector + ESA and the dark offset ---
 BACKGROUND = 'measure'            # 'measure' = once per session; 'none'; or the path of an earlier *_rin_data.h5 (same ESA settings)
