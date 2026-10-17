@@ -149,8 +149,13 @@ BINS_PER_DECADE = 50              # plot / *_binned.csv: average in logarithmic 
 ESA_AC_COUPLED_AT_EXIT = True     # leave the ESA AC-coupled (DC-safe) when the script ends
 DC_BLOCK_NAME = 'Thorlabs EF500 DC block'
 
-# --- HighFinesse comparison: a HighFinesse LWA RIN measurement at the same time, on the other arm of a splitter ---
+# --- splitter: power at this detector / power in the other arm (power meter / HighFinesse), from the same splitter ---
 # (RIN is normalized to the average power, so the split ratio does not matter - only shot noise differs between the arms)
+SPLIT_RATIO = 0.1285              # 2026-10-17: fit of 5 levels (0.1-0.92 mW at the detector arm), +-0.0001, offset-free.
+                                  # Only used for the power in the other arm (summary, plot title, h5: p_other_arm_w).
+                                  # None = not used. Measure it again whenever the splitter / fibres change.
+
+# --- HighFinesse comparison: a HighFinesse LWA RIN measurement at the same time, on the other arm of the splitter ---
 COMPARE_HIGHFINESSE = True       # True: every measurement asks you to start the HighFinesse measurement before the ESA sweep
                                   # and to save its RIN .txt + a screenshot afterwards. Save it as "raw data" ("binned data"
                                   # has only a max / min pair per point above ~60 kHz and is refused). The newest .txt and
