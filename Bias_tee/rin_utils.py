@@ -125,6 +125,9 @@ def validate_config(cfg):
             print('NOTE: segment %d: points are %.3g Hz apart, RBW is %g Hz - narrow lines between the points can be missed '
                   '(more points or a wider RBW).' % (i, spacing, rbw))
     cfg.ESA_SEGMENTS = segs
+    sr = getattr(cfg, 'SPLIT_RATIO', None)
+    if sr is not None and not (isinstance(sr, (int, float)) and sr > 0):
+        raise ValueError('SPLIT_RATIO must be a positive number (detector arm / other arm) or None, got %r' % (sr,))
     if cfg.COMPARE_HIGHFINESSE and not cfg.BINS_PER_DECADE:
         raise ValueError('COMPARE_HIGHFINESSE needs BINS_PER_DECADE > 0 (both RIN spectra are compared in the same bins)')
 
@@ -1054,6 +1057,7 @@ def compute_rin(cfg, spec, cal, laser, background=None):
            'opt_psd_w2_hz': voc / k ** 2, 'opt_psd_raw_w2_hz': voc_raw / k ** 2,
            'rin_raw_db': _db(rin_raw), 'rin_db': _db(rin), 'floor_db': _db(floor),
            'v_dc_mean': v_mean + v_dark, 'v_dark': v_dark, 'v_signal': v_mean, 'p_avg_w': v_mean / k, 'i_pd_a': i_pd,
+           'p_other_arm_w': v_mean / k / cfg.SPLIT_RATIO if getattr(cfg, 'SPLIT_RATIO', None) else np.nan,
            'rin_shot_db': float(_db(2 * Q_E / i_pd)) if G else np.nan,
            'rin_rms_raw': float(np.sqrt(_trapz(rin_raw, c['f']))),
            'rin_rms': float(np.sqrt(_trapz(np.nan_to_num(rin, nan=0.0), c['f']))),
@@ -1087,6 +1091,8 @@ def print_summary(cfg, name, spec, res):
         sat = '  <-- above %.2f V, where the detector characterization showed it linear' % res['v_linear_max']
     print('\n[%s] Vdc = %.4f V (dark %.4f V)%s  ->  P_avg = %.4g mW,  I_pd = %.4g mA,  shot-noise RIN = %.1f dBc/Hz'
           % (name, res['v_dc_mean'], res['v_dark'], sat, 1e3 * res['p_avg_w'], 1e3 * res['i_pd_a'], res['rin_shot_db']))
+    if np.isfinite(res.get('p_other_arm_w', np.nan)):
+        print('[%s] other arm of the splitter (SPLIT_RATIO = %.4g): %.4g mW' % (name, cfg.SPLIT_RATIO, 1e3 * res['p_other_arm_w']))
     decades = [f for f in 10.0 ** np.arange(0, 12) if res['f'][0] <= f <= res['f'][-1]]
     print('[%s] RIN (dBc/Hz): %s' % (name, '   '.join('%s: %.1f' % (_hz(f), rin_at(res, f)) for f in decades)))
     print('[%s] integrated %s - %s: %.4g %% rms as measured, %.4g %% rms after background subtraction (%.0f %% of the '
@@ -1575,6 +1581,8 @@ def make_rin_report(cfg, label, stamp, results, base_path, show=False, lims=None
             if np.isfinite(r['bg_psd_dbm_hz']).any():
                 ax2.plot(r['f'], r['bg_psd_dbm_hz'], ':', color=c, lw=1.2, label='%s  laser blocked' % name)
             power = ('P = %.3g mW,  ' % (1e3 * res['p_avg_w'])) if np.isfinite(res['p_avg_w']) else ''
+            if np.isfinite(res.get('p_other_arm_w', np.nan)):
+                power += 'other arm %.3g mW (split %.4g),  ' % (1e3 * res['p_other_arm_w'], res['p_avg_w'] / res['p_other_arm_w'])
             info.append('%s:  Vdc = %.3f V,  %s%.3g %% rms (%s - %s)'
                         % (name, res['v_dc_mean'], power, 100 * res['rin_rms'], _hz(res['f'][0]), _hz(res['f'][-1])))
         binning = ('%d bins per decade' % cfg.BINS_PER_DECADE) if cfg.BINS_PER_DECADE else 'every ESA point'
