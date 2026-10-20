@@ -41,12 +41,12 @@ from TLPM import TLPM
 # =============================================================================
 # Settings
 # =============================================================================
-DUT_NAME        = 'PDA05CF2_SM1FCA2'     # default only: the script asks for the DUT (and TIA gain) every run
+DUT_NAME        = 'HP11982A' #PDA05CF2_SM1FCA2_DET2_no_splitting'     # default only: the script asks for the DUT (and TIA gain) every run
 WAVELENGTH_NM   = 1550
-LOAD            = 'HiZ'          # 'HiZ' or '50ohm' (50 ohm feed-through at the Keithley input)
+LOAD            = 'HiZ'          # 'HiZ' or '50ohm' (50 ohm feed-through/T-splitter + 50 Ohm terminator at the Keithley input)
 TIA_GAIN        = 10e3           # default V/A for this load (PDA05CF2: 10 kV/A Hi-Z, 5 kV/A 50 ohm), None to skip
  
-SPLIT_RATIO         = 0.289 #955 #1.0        # P(DUT arm) / P(monitor arm) #Measured from handheld powermeter: Photodetector arm: 1.214, 0.8706, 0.4007, 0.1881, 0.0982 powermeter arm: 4.187, 3.015, 1.372, 0.6488, 0.3442  # Measured from M01246265 Photodetector arm: 1.537 mW, 1.126mW, 0.805 mW, 0.3827, 0.2011. Powermeter arm: 1.607 mW, 1.186mW, 0.842mW, 0.4001, 0.2103
+SPLIT_RATIO         = 0.9598#2653 #289 #955 #1.0        # P(DUT arm) / P(monitor arm) #Measured from handheld powermeter: Photodetector arm: 1.214, 0.8706, 0.4007, 0.1881, 0.0982 powermeter arm: 4.187, 3.015, 1.372, 0.6488, 0.3442  # Measured from M01246265 Photodetector arm: 1.537 mW, 1.126mW, 0.805 mW, 0.3827, 0.2011. Powermeter arm: 1.607 mW, 1.186mW, 0.842mW, 0.4001, 0.2103
 MEASURE_SPLIT_RATIO = False
 
 PM_SERIAL       = 'M01246265' #'P0024530'

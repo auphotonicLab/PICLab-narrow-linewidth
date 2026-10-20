@@ -1185,10 +1185,24 @@ def prepare_highfinesse(cfg, hf):
     return hf
 
 
-def highfinesse_dir(cfg):
-    """HIGHFINESSE_FOLDER: a name = a folder next to the label folders (in SAVE_FOLDER), or an absolute path."""
+def highfinesse_dir(cfg, label_folder=None):
+    """HIGHFINESSE_FOLDER: a name = a subfolder of the label folder (SAVE_FOLDER/<label>/<name>), so the HighFinesse
+    files sit with the measurement they belong to; or an absolute path = one folder for everything.
+    Without label_folder a name is taken in SAVE_FOLDER (where it was before 2026-10-20)."""
     d = cfg.HIGHFINESSE_FOLDER
-    return d if os.path.isabs(d) else os.path.join(cfg.SAVE_FOLDER, d)
+    return d if os.path.isabs(d) else os.path.join(label_folder or cfg.SAVE_FOLDER, d)
+
+
+def prepare_label_folder(cfg, label):
+    """Create SAVE_FOLDER/<label>/ and (COMPARE_HIGHFINESSE) its HighFinesse folder BEFORE anything is measured,
+    so the HighFinesse software can be pointed at it in advance. -> the label folder."""
+    folder = os.path.join(cfg.SAVE_FOLDER, label)
+    os.makedirs(folder, exist_ok=True)
+    if getattr(cfg, 'COMPARE_HIGHFINESSE', False):
+        d = highfinesse_dir(cfg, folder)
+        os.makedirs(d, exist_ok=True)
+        print('HighFinesse files: save them in  %s' % d)
+    return folder
 
 
 def parse_highfinesse(path):
@@ -1285,8 +1299,9 @@ def print_compare(name, c, hf):
 def collect_highfinesse(cfg, t_start, base):
     """After the ESA measurement: wait until the HighFinesse RIN file ('raw data' export) and a screenshot, saved
     after t_start, are there. The newest of each is used and copied next to the ESA data as <base>_highfinesse.txt /
-    <base>_highfinesse_screenshot.<ext>. -> parsed dict, or None if skipped."""
-    d = highfinesse_dir(cfg)
+    <base>_highfinesse_screenshot.<ext>. -> parsed dict, or None if skipped.
+    They are looked for in the HighFinesse folder of the label folder that base is in."""
+    d = highfinesse_dir(cfg, os.path.dirname(base))
     since = datetime.fromtimestamp(t_start).strftime('%H:%M:%S')
     new = lambda patterns: sorted((p for pat in patterns for p in glob.glob(os.path.join(d, pat))
                                    if os.path.getmtime(p) > t_start), key=os.path.getmtime)
@@ -1715,19 +1730,17 @@ def run_measurement(R, label, background):
     to SAVE_FOLDER/<label>/."""
     cfg = R.cfg
     stamp = pic.datetimestring()
-    folder = os.path.join(cfg.SAVE_FOLDER, label)
-    os.makedirs(folder, exist_ok=True)
+    folder = prepare_label_folder(cfg, label)            # normally already made by main() when the label was chosen
     base = os.path.join(folder, stamp + '_rin')
     log_idx, prompt_idx = len(R.tee.lines), len(bt.PROMPT_LOG)
     print('\nMeasuring RIN  [%s]  ->  %s' % (label, folder))
     hfm = cmp = None
     if cfg.COMPARE_HIGHFINESSE:
-        os.makedirs(highfinesse_dir(cfg), exist_ok=True)
         bt.ask('HIGHFINESSE: START its RIN measurement now (same laser, other arm of the splitter), with averaging on.\n'
                '  The ESA measurement starts when you press ENTER; save the HighFinesse file ("raw data") and a\n'
                '  screenshot AFTER it, in  %s\n'
                '  (The HighFinesse averages in dB, so its noise reads low; the comparison corrects that using the\n'
-               '  Av count written in the HighFinesse file.)' % highfinesse_dir(cfg))
+               '  Av count written in the HighFinesse file.)' % highfinesse_dir(cfg, folder))
     t_start = time.time()
     laser = R.measure('laser')
     if cfg.COMPARE_HIGHFINESSE:

@@ -66,7 +66,7 @@ How the tone level is obtained (relative power of the tone, dBc = m^2 / 2, m = m
     ESA power -> open-circuit PD voltage exactly as rin_utils.compute_rin (50 ohm divider, bias tee + DC block loss,
     Keithley V_dc corrected to the reading without the tee). Dark offset of the detectors (~ -5 mV) neglected (< 0.01 dB).
 
-Output in SAVE_FOLDER/<label>/ :
+Output in SAVE_FOLDER/<label>/  (HighFinesse files: save them in SAVE_FOLDER/<label>/HighFinesse/, created at the start):
     <timestamp>_am_data.h5                 everything: settings, ESA traces, scope records, HighFinesse files, results, log
     <timestamp>_am_summary.csv             one row per tone (with columns per Av count group)
     <timestamp>_am_highfinesse_files.csv   one row per HighFinesse file
@@ -108,12 +108,13 @@ SETTLE_S = 0.5                    # wait after changing the tone frequency
 
 # --- HighFinesse ---
 COMPARE_HIGHFINESSE = True
-HIGHFINESSE_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\RIN\HighFinesse'   # where you save the HF files
+HIGHFINESSE_FOLDER = 'HighFinesse'  # where you save the HF files: a name = SAVE_FOLDER/<label>/HighFinesse (created when
+                                     # the label is chosen, before anything is measured), or an absolute path
 HF_FILES_PER_TONE = 2             # HighFinesse files asked for per tone (any Av count, any order: read from each file;
                                   # 's' at the prompt = no more files for this tone)
 
 # --- scope: an independent detector (see the docstring) ---
-SCOPE_ENABLE = False
+SCOPE_ENABLE = True 
 SCOPE_IP = '192.168.1.52'         # Siglent SDS2352X-E
 SCOPE_AC_CH = 1                   # AC-coupled (SCOPE_AC_COUPLING): the tone
 SCOPE_AC_COUPLING = 'A50'         # 'A50' / 'D50' = 50 ohm input (terminates the cable: no 50 ohm x cable-C roll-off,
@@ -124,7 +125,7 @@ SCOPE_DC_CH = None                # None: the same channel, switched to SCOPE_DC
                                   # records. A channel number: a BNC T to that channel, read from the same acquisition
                                   # (with 50 ohm inputs a BNC T would load the detector twice: use None)
 SCOPE_SWITCH_SETTLE_S = 1.0       # wait after switching the coupling (AC coupling capacitor recharging)
-SCOPE_DETECTOR = 'PD2'            # name of the detector on the scope (saved, in the plot)
+SCOPE_DETECTOR = 'HP11982A'            # name of the detector on the scope (saved, in the plot)
 SCOPE_MEMORY = '140K'
 SCOPE_NCYC = 200                  # record length >= this many tone periods
 SCOPE_NACQ = 3                    # records per tone (power-averaged)
@@ -745,10 +746,7 @@ def main():
     cfg = build_cfg()
     exp_dbc, exp_m = expected_level_dbc(cfg)
     label = bt.safe_name(bt.ask_label(cfg.SAVE_FOLDER, cfg.DEFAULT_SAVE_LABEL, title='AM response test')) or 'unlabelled'
-    folder = os.path.join(cfg.SAVE_FOLDER, label)
-    os.makedirs(folder, exist_ok=True)
-    if cfg.COMPARE_HIGHFINESSE:
-        os.makedirs(rin.highfinesse_dir(cfg), exist_ok=True)
+    folder = rin.prepare_label_folder(cfg, label)  # label folder + its HighFinesse folder, before anything is measured
     stamp = pic.datetimestring()
     base = os.path.join(folder, stamp + '_am')
     print('Label: %s\nSaving in: %s\nTones: %s' % (label, folder, ', '.join(rin._hz(f) for f in cfg.TONES_HZ)))
