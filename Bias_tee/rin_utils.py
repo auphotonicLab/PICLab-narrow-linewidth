@@ -49,7 +49,8 @@ _trapz = getattr(np, 'trapezoid', None) or np.trapz
 
 CHANNEL_DEFAULTS = dict(name='PD1', esa='fsw', esa_ip='', keithley_ip='', pd_model='', wavelength_nm=None,
                         responsivity_A_W=None, transimpedance_V_A=None, pd_output_ohm=50.0, pd_max_hiz_V=10.0,
-                        dark_offset_V=0.0, ac_path_loss_db=0.0, noise_bw_factor=1.065, pd_cal='ask', bias_tee_cal='ask')
+                        dark_offset_V=0.0, ac_path_loss_db=0.0, noise_bw_factor=1.065, pd_cal='ask', bias_tee_cal='ask',
+                        pd_cal_preselect='', bias_tee_cal_preselect='')
 
 
 class NotConfirmed(Exception):
@@ -501,9 +502,11 @@ def _newest(folder, pattern):
     return max(files, key=os.path.getmtime) if files else ''
 
 
-def _ask_path(title, initialdir, pattern=None):
-    """File pop-up (pattern given, the newest match pre-selected) or folder pop-up (pattern None). '' = cancelled.
+def _ask_path(title, initialdir, pattern=None, preselect=''):
+    """File pop-up (pattern given) or folder pop-up (pattern None). '' = cancelled. Pre-selected: `preselect` if it
+    exists (a file: highlighted in its folder; a folder: the pop-up opens in it), else the newest match in initialdir.
     Falls back to a console prompt if no display is available."""
+    preselect = os.path.normpath(preselect) if preselect and os.path.exists(preselect) else ''
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -511,39 +514,45 @@ def _ask_path(title, initialdir, pattern=None):
         root.withdraw()
         root.attributes('-topmost', True)
         if pattern:
-            newest = _newest(initialdir, pattern)
-            path = filedialog.askopenfilename(title=title, initialdir=initialdir or None, parent=root,
-                                              initialfile=os.path.basename(newest),
+            pick = preselect if os.path.isfile(preselect) else _newest(initialdir, pattern)
+            path = filedialog.askopenfilename(title=title, initialdir=(os.path.dirname(pick) if pick else initialdir) or None,
+                                              parent=root, initialfile=os.path.basename(pick),
                                               filetypes=[(pattern, pattern), ('all files', '*.*')])
         else:
-            path = filedialog.askdirectory(title=title, initialdir=initialdir or None, mustexist=True, parent=root)
+            path = filedialog.askdirectory(title=title, initialdir=(preselect if os.path.isdir(preselect) else initialdir)
+                                           or None, mustexist=True, parent=root)
         root.destroy()
         return os.path.normpath(path) if path else ''
     except Exception as e:
         print('(pop-up not available: %s)' % e)
+        if preselect:
+            ans = input('%s\n  path (empty = %s, - = none): ' % (title, preselect)).strip().strip('"')
+            return '' if ans == '-' else (ans or preselect)
         return input('%s\n  path (empty = none): ' % title).strip().strip('"')
 
 
-def load_pd_cal(path):
+def load_pd_cal(path, load='HiZ'):
     """Photodetector characterization (Photodetector/photodetector_characterization.py, *.h5) -> dict.
 
     Uses its measured gain V_net / P_detector [V/W] (P = power out of the fibre onto the detector, incl. any coupling
-    loss) and its TIA gain [V/A] (for the photocurrent / shot noise). It must have been measured into Hi-Z, like the
-    Keithley reads the DC port here."""
+    loss) and its TIA gain [V/A] (for the photocurrent / shot noise). It must have been measured into the load the
+    detector sees here: Hi-Z for the Keithley at the DC port (default), '50ohm' for a 50 ohm scope input."""
+    norm = lambda s: str(s).replace(' ', '').replace('_', '').lower()
     with h5py.File(path, 'r') as h:
         r = h['results'].attrs if 'results' in h else {}
         if 'gain_V_per_W' not in r:
             raise ValueError('%s has no fit result (%s) - choose another run' % (os.path.basename(path),
                                                                                 h.attrs.get('analysis_error', 'no results')))
-        load = str(h.attrs.get('load', '?'))
-        if load.replace(' ', '').lower() != 'hiz':
-            raise ValueError('%s was measured into %s; the Keithley reads Hi-Z - choose a HiZ characterization'
-                             % (os.path.basename(path), load))
+        measured = str(h.attrs.get('load', '?'))
+        if norm(measured) != norm(load):
+            raise ValueError('%s was measured into %s; here the detector sees %s - choose a %s characterization'
+                             % (os.path.basename(path), measured, load, load))
         num = lambda x: float(x) if x is not None and str(x) not in ('None', 'nan', '') else np.nan
         v_per_w, tia = num(r['gain_V_per_W']), num(h.attrs.get('tia_gain_V_per_A'))
         p_comp = num(r.get('P_comp_W'))
         cal = {'pd_file': os.path.normpath(path), 'v_per_w': v_per_w, 'tia_v_per_a': tia if np.isfinite(tia) else None,
                'pd_wavelength_nm': num(h.attrs.get('wavelength_nm')), 'pd_dut': str(h.attrs.get('dut', '')),
+               'pd_load': measured,
                # highest voltage known to be linear: the 1 % compression point if one was found, else the largest one measured
                'v_linear_max': p_comp * v_per_w if np.isfinite(p_comp) else num(r.get('V_max'))}
     cal['pd_text'] = ('%s: %.4g V/mW%s, linear to %.2f V (%s)'
@@ -600,7 +609,7 @@ def resolve_calibrations(cfg, spec, kept=None):
             print('[%s] %s: the choice of this session is used (%s)' % (name, key, kept[key] or 'none'))
             return loader(kept[key]) if kept[key] else None
         for _ in range(3):
-            path = _ask_path(title, folder, pattern)
+            path = _ask_path(title, folder, pattern, spec.get(key + '_preselect') or '')
             if not path:
                 print('[%s] %s: none chosen' % (name, key))
                 return None

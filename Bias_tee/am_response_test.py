@@ -19,7 +19,7 @@ Wiring (modulator as in Mid-IR/Eye_diagram_lab.py, detection as in rin_measureme
     laser -> amplitude modulator (MZI) -> splitter -> arm 1: PD -> bias tee -> EF500 -> ESA (DC port -> Keithley)
                                                     -> arm 2: HighFinesse
                                                     -> arm 3 (SCOPE_ENABLE): a second photodetector -> scope SCOPE_AC_CH
-                                                          (1 Mohm; optionally a BNC T to SCOPE_DC_CH as well)
+                                                          (50 ohm or 1 Mohm input, SCOPE_AC_COUPLING / SCOPE_DC_COUPLING)
     modulator bias : SPD3303X (DC_IP) at V_QUAD (quadrature)     modulator RF : SDG6022X (AFG_IP) pure AC sine
 
 HighFinesse: several files per tone (HF_FILES_PER_TONE)
@@ -46,6 +46,8 @@ Scope (SCOPE_ENABLE): an independent detector, the Siglent SDS2352X-E
     HighFinesse follows the true modulation versus frequency.
     Accuracy: the frequency dependence to ~0.05 dB; the absolute level only to the scope's DC gain accuracy (a few %
     per channel, i.e. a few tenths of a dB in m^2/2) - use the scope result mainly for the SHAPE versus frequency.
+    SCOPE_PD_CAL (the detector's characterization, same load as the scope input) converts V_dc to the optical power on
+    the detector at every tone; above SCOPE_MAX_POWER_MW or its linear range the tone line is flagged.
 
 Modulator response and drift
     The modulator (LiNbO3 MZI) is before the splitter: whatever m(f) it gives - not flat, polarization dependent -
@@ -98,7 +100,7 @@ pic = rin.pic
 # dB-averaging correction ... - is taken from rin_measurement.py)
 # =============================================================================
 SAVE_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\AM_response'
-DEFAULT_SAVE_LABEL = ''
+DEFAULT_SAVE_LABEL = 'NKT_10mW_EDFA1090mA_ESA_Keithley_bias_tee_PDA05CF2_Scope_HP11982A_HF_n=1_and_n=10'
 SHOW_PLOTS = True
 
 # --- tones ---
@@ -126,6 +128,16 @@ SCOPE_DC_CH = None                # None: the same channel, switched to SCOPE_DC
                                   # (with 50 ohm inputs a BNC T would load the detector twice: use None)
 SCOPE_SWITCH_SETTLE_S = 1.0       # wait after switching the coupling (AC coupling capacitor recharging)
 SCOPE_DETECTOR = 'HP11982A'            # name of the detector on the scope (saved, in the plot)
+SCOPE_PD_CAL = 'ask'              # characterization of the scope detector (Photodetector/photodetector_characterization.py)
+                                  # measured into the load of SCOPE_DC_COUPLING (*_50ohm.h5 for D50, *_HiZ.h5 for D1M):
+                                  # 'ask' = pop-up (Cancel = none), a path, or None. Its V/W gives the optical power on the
+                                  # detector at every tone (printed, saved) for the warning below. Not needed for
+                                  # m = V_tone / V_dc itself (a ratio, the gain cancels).
+SCOPE_PD_CAL_PRESELECT = (r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'
+                          r'\2026-10-20_13-24-42_HP11982A_50ohm_T_splitter+50ohm_termination_1550nm_50ohm.h5')
+                                  # highlighted in that pop-up ('' = the newest file with the right load)
+SCOPE_MAX_POWER_MW = 3.5          # warn when the scope detector gets more than this, or more than the linear range of its
+                                  # characterization (HP11982A 2026-10-20: linear within 0.5 % to ~4.5 mW, clips at ~4.4 V)
 SCOPE_MEMORY = '140K'
 SCOPE_NCYC = 200                  # record length >= this many tone periods
 SCOPE_NACQ = 3                    # records per tone (power-averaged)
@@ -278,6 +290,49 @@ class Modulator:
             except Exception as e:
                 print('cleanup warning:', e)
         print('Modulator: SDG output OFF, bias 0 V and OFF.')
+
+
+def coupling_text(code):
+    """Siglent coupling code ('A50', 'D1M', ...) -> 'AC 50 ohm' / 'DC 1 Mohm'."""
+    c = str(code).upper()
+    return '%s %s' % ('AC' if c.startswith('A') else 'DC', '50 ohm' if c.endswith('50') else '1 Mohm')
+
+
+def load_scope_cal(cfg):
+    """SCOPE_PD_CAL -> characterization of the scope detector (rin_utils.load_pd_cal, measured into the load of
+    SCOPE_DC_COUPLING) with its warning limit added, or None."""
+    load = '50ohm' if str(cfg.SCOPE_DC_COUPLING).upper().endswith('50') else 'HiZ'
+    setting = cfg.SCOPE_PD_CAL
+    if not setting:
+        print('Scope detector: no characterization (SCOPE_PD_CAL = None) - no optical power / no %g mW check'
+              % cfg.SCOPE_MAX_POWER_MW)
+        return None
+    cal = None
+    for _ in range(3 if setting == 'ask' else 1):
+        path = setting if setting != 'ask' else rin._ask_path(
+            'AM response: characterization of the scope detector %s, measured into %s (*_%s.h5) - Cancel = none'
+            % (cfg.SCOPE_DETECTOR, load, load), getattr(cfg, 'PD_CAL_FOLDER', ''), '*_%s.h5' % load,
+            getattr(cfg, 'SCOPE_PD_CAL_PRESELECT', ''))
+        if not path:
+            break
+        try:
+            cal = rin.load_pd_cal(path, load)
+            break
+        except Exception as e:
+            if setting != 'ask':
+                raise
+            print('Scope detector characterization: %s' % e)
+    if cal is None:
+        print('Scope detector: no characterization chosen - no optical power / no %g mW check' % cfg.SCOPE_MAX_POWER_MW)
+        return None
+    if cfg.SCOPE_DETECTOR and not cal['pd_dut'].upper().startswith(str(cfg.SCOPE_DETECTOR).upper()):
+        print('WARNING: the scope detector characterization is for %s, SCOPE_DETECTOR is %s'
+              % (cal['pd_dut'], cfg.SCOPE_DETECTOR))
+    cal['max_power_W'] = cfg.SCOPE_MAX_POWER_MW * 1e-3
+    cal['max_v_dc'] = min(cal['max_power_W'] * cal['v_per_w'], cal['v_linear_max'])     # whichever is lower
+    print('Scope detector: %s\n  -> warning above %.2f V on the scope = %.2f mW on the detector'
+          % (cal['pd_text'], cal['max_v_dc'], 1e3 * cal['max_v_dc'] / cal['v_per_w']))
+    return cal
 
 
 class ScopeDetector:
@@ -634,7 +689,8 @@ def make_plot(cfg, label, stamp, rows_by_ch, base_path, show):
             if np.isfinite(get('scope_tone')).any():
                 if i == 0:
                     ax1.plot(f, get('scope_tone'), '^-', color=bt.INK2, ms=4, lw=1.2,
-                             label='scope, %s (1 Mohm, AC / DC)' % cfg.SCOPE_DETECTOR)
+                             label='scope, %s (%s / %s)' % (cfg.SCOPE_DETECTOR, coupling_text(cfg.SCOPE_AC_COUPLING),
+                                                            coupling_text(cfg.SCOPE_DC_COUPLING)))
                     ax2.plot(f, get('d_hf_scope'), 'v--', color=hf_col, ms=5, lw=1.2,
                              label='HighFinesse - scope (TONE, all files)')
                 ax2.plot(f, get('d_esa_scope'), '^--', color=c, ms=5, lw=1.2, label='%s ESA - scope (TONE)' % name)
@@ -666,6 +722,11 @@ def write_h5(path, cfg, R, scope, label, stamp, tones, rows_by_ch, files_by_ch, 
         h.attrs['doc'] = __doc__
         h.attrs['afg_readback'] = getattr(mod, 'readback', '')
         h.attrs['scope_idn'] = scope.idn if scope else 'None'
+        if scope and getattr(scope, 'cal', None):            # characterization of the scope detector (SCOPE_PD_CAL)
+            sc = h.create_group('scope_detector_cal')
+            for k, v in scope.cal.items():
+                if not callable(v):
+                    sc.attrs[k] = bt._attr(v)
         cg = h.create_group('config')
         for k, v in vars(cfg).items():
             cg.attrs[k] = bt._attr(v)
@@ -756,6 +817,7 @@ def main():
         print('Expected from the modulator: m = %.3f %% -> %.2f dBc (V_PI %g V, %g Vpp)' % (100 * exp_m, exp_dbc,
                                                                                          cfg.V_PI, cfg.DRIVE_VPP))
     R = rin.RinSetup(cfg)
+    scope_cal = load_scope_cal(cfg) if cfg.SCOPE_ENABLE else None   # asked with the other calibrations, before measuring
     log_idx, prompt_idx = 0, len(bt.PROMPT_LOG)
     mod = scope = None
     tones = []
@@ -766,6 +828,7 @@ def main():
         R.confirm_dc_block()                       # ESA DC-coupled only after 'yes' (EF500 at the ESA input)
         if cfg.SCOPE_ENABLE:
             scope = ScopeDetector(cfg)
+            scope.cal = scope_cal
             print('Scope: %s  CH%d %s = tone, DC level of %s: %s'
                   % (scope.idn, cfg.SCOPE_AC_CH, cfg.SCOPE_AC_COUPLING, cfg.SCOPE_DETECTOR,
                      ('the same channel switched to %s' % cfg.SCOPE_DC_COUPLING) if scope.same else
@@ -805,9 +868,17 @@ def main():
             if scope:
                 s = scope.measure(f0)
                 t['scope'] = s
-                print('  scope (%s): Vdc %.4f V, tone %.3f mV pk -> %.2f dBc, m = %.3f %%, SNR %.0f dB, %d codes pk-pk%s'
-                      % (cfg.SCOPE_DETECTOR, s['v_dc'], 1e3 * s['vpk'], s['tone_dbc'], 100 * s['vpk'] / s['v_dc'],
-                         s['snr_db'], s['pp_codes'], '  <-- CLIPPED' if s['clipped'] else ''))
+                power, flag = '', '  <-- CLIPPED' if s['clipped'] else ''
+                if scope.cal:
+                    s['p_detector_W'] = s['v_dc'] / scope.cal['v_per_w']
+                    s['above_max_power'] = bool(s['v_dc'] > scope.cal['max_v_dc'])
+                    power = ' (%.2f mW on the detector)' % (1e3 * s['p_detector_W'])
+                    if s['above_max_power']:
+                        flag += ('  <-- ABOVE %.2f V = %.2f mW (SCOPE_MAX_POWER_MW / linear range): lower the power '
+                                 'on the scope arm' % (scope.cal['max_v_dc'], 1e3 * scope.cal['max_v_dc'] / scope.cal['v_per_w']))
+                print('  scope (%s): Vdc %.4f V%s, tone %.3f mV pk -> %.2f dBc, m = %.3f %%, SNR %.0f dB, %d codes pk-pk%s'
+                      % (cfg.SCOPE_DETECTOR, s['v_dc'], power, 1e3 * s['vpk'], s['tone_dbc'], 100 * s['vpk'] / s['v_dc'],
+                         s['snr_db'], s['pp_codes'], flag))
             if cfg.COMPARE_HIGHFINESSE:
                 for hf in collect_hf_files(cfg, f0, t_start, base):
                     h = analyse_hf(cfg, hf, f0)

@@ -91,7 +91,10 @@ CHANNELS = [
          pd_cal='ask',                           # photodetector characterization (Photodetector/photodetector_characterization.py,
                                                  # *_HiZ.h5): its measured V/W gives the optical power, its TIA gain the shot
                                                  # noise. 'ask' = pop-up once per session (Cancel = none), a path, or None
-         responsivity_A_W=None,                  # only without pd_cal: responsivity at the laser wavelength (data sheet curve)
+         pd_cal_preselect=r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'
+                          r'\2026-10-16_16-37-30_PDA05CF2_SM1FCA2_1550nm_HiZ.h5',   # highlighted in the pd_cal pop-up
+                                                 # (DET1 + SM1FCA2); '' = the newest *_HiZ.h5
+         responsivity_A_W=None,                 # only without pd_cal: responsivity at the laser wavelength (data sheet curve)
          transimpedance_V_A=None,                # only without pd_cal: transimpedance gain into HIGH-Z (PDA05CF2: 10 kV/A)
          pd_output_ohm=50.0,                     # series output resistor of the detector
          pd_max_hiz_V=10.0,                      # saturation into Hi-Z
@@ -100,7 +103,9 @@ CHANNELS = [
                                                  # loss of bias tee + DC block vs frequency, stage 3 = DC reading through the
                                                  # tee vs direct. 'ask' = pop-up once per session (Cancel = none), a folder
                                                  # (or one stage-2 *_data.h5), or None
-         ac_path_loss_db=0.0,                    # only without bias_tee_cal: loss in dB, or (freqs_Hz, loss_dB)
+         bias_tee_cal_preselect=r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee\Bias_tee_no_1_full_charac_inc_DC',
+                                                 # the bias_tee_cal pop-up opens in this folder; '' = the newest run
+         ac_path_loss_db=0.0,                   # only without bias_tee_cal: loss in dB, or (freqs_Hz, loss_dB)
          noise_bw_factor=1.065),                 # noise bandwidth of the RBW filter / RBW (Gaussian filter: 1.065)
     # dict(name='PD2', esa='ssa', esa_ip='192.168.1.11', keithley_ip='192.168.1.xxx', ...),
 ]
