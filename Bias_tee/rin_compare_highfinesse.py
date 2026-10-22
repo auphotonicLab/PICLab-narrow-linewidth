@@ -8,7 +8,8 @@ rin_measurement.py with COMPARE_HIGHFINESSE = True does this right after each me
 later, e.g. with a HighFinesse file that was saved too late or as "binned data" and has been exported again.
 
     ESA_H5           'newest' = the newest  SAVE_FOLDER/<label>/<timestamp>_rin_data.h5 , or a path
-    HIGHFINESSE_TXT  'newest' = the newest .txt in the HighFinesse folder of rin_measurement.py, or a path
+    HIGHFINESSE_TXT  'newest' = the newest .txt in the HighFinesse folder of that measurement's label folder
+                     (<label>/HighFinesse; for measurements before 2026-10-20 the shared SAVE_FOLDER/HighFinesse), or a path
                      (must be a "raw data" export: one row per FFT line)
 
 Output in  <label folder>/<timestamp>_vs_<HighFinesse file name>/ :
@@ -38,7 +39,8 @@ import rin_utils as rin
 ESA_H5 = 'newest'
 HIGHFINESSE_TXT = 'newest'
 SAVE_FOLDER = settings.SAVE_FOLDER                                        # where 'newest' looks for the ESA file
-HIGHFINESSE_DIR = rin.highfinesse_dir(rin.config_from_globals(vars(settings)))   # where 'newest' looks for the .txt
+_CFG = rin.config_from_globals(vars(settings))
+HIGHFINESSE_DIR = rin.highfinesse_dir(_CFG)   # where 'newest' looks if the label folder has no HighFinesse .txt (old layout)
 DB_AVERAGING_CORRECTION = settings.HIGHFINESSE_DB_AVERAGING_CORRECTION   # see rin_measurement.py
 MAX_TIME_GAP_MIN = 30         # warn if the HighFinesse file was not saved within this long after the ESA start
 SHOW_PLOTS = True
@@ -47,9 +49,12 @@ SHOW_PLOTS = True
 # =============================================================================
 def main():
     esa = ESA_H5 if ESA_H5 != 'newest' else rin._newest(SAVE_FOLDER, os.path.join('*', '*_rin_data.h5'))
-    txt = HIGHFINESSE_TXT if HIGHFINESSE_TXT != 'newest' else rin._newest(HIGHFINESSE_DIR, '*.txt')
     if not esa or not os.path.isfile(esa):
         raise SystemExit('No ESA measurement found (%s)' % (esa or os.path.join(SAVE_FOLDER, '*', '*_rin_data.h5')))
+    txt = HIGHFINESSE_TXT
+    if txt == 'newest':
+        txt = (rin._newest(rin.highfinesse_dir(_CFG, os.path.dirname(esa)), '*.txt')     # <label>/HighFinesse
+               or rin._newest(HIGHFINESSE_DIR, '*.txt'))                                # shared folder (old layout)
     if not txt or not os.path.isfile(txt):
         raise SystemExit('No HighFinesse file found (%s)' % (txt or os.path.join(HIGHFINESSE_DIR, '*.txt')))
     rin.compare_saved(esa, txt, MAX_TIME_GAP_MIN, show=SHOW_PLOTS, db_averaging_correction=DB_AVERAGING_CORRECTION)

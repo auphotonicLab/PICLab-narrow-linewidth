@@ -15,7 +15,8 @@ Wiring of one channel (CHANNELS: one entry per detector; add a second entry to m
 
 How to use
     1. Fill in CHANNELS (IP addresses) and SAVE_FOLDER.
-    2. Run the script. A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/ :
+    2. Run the script. A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/  (the HighFinesse
+       files go in SAVE_FOLDER/<label>/HighFinesse/, created right after the label pop-up):
            <timestamp>_rin_data.h5           all data (raw ESA traces, background, DC readings, settings, script sources)
            <timestamp>_rin_<channel>.csv     every ESA point: frequency, ESA noise, optical noise, RIN
            <timestamp>_rin_<channel>_binned.csv   the same averaged in BINS_PER_DECADE logarithmic bins
@@ -90,7 +91,10 @@ CHANNELS = [
          pd_cal='ask',                           # photodetector characterization (Photodetector/photodetector_characterization.py,
                                                  # *_HiZ.h5): its measured V/W gives the optical power, its TIA gain the shot
                                                  # noise. 'ask' = pop-up once per session (Cancel = none), a path, or None
-         responsivity_A_W=None,                  # only without pd_cal: responsivity at the laser wavelength (data sheet curve)
+         pd_cal_preselect=r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'
+                          r'\2026-10-16_16-37-30_PDA05CF2_SM1FCA2_1550nm_HiZ.h5',   # highlighted in the pd_cal pop-up
+                                                 # (DET1 + SM1FCA2); '' = the newest *_HiZ.h5
+         responsivity_A_W=None,                 # only without pd_cal: responsivity at the laser wavelength (data sheet curve)
          transimpedance_V_A=None,                # only without pd_cal: transimpedance gain into HIGH-Z (PDA05CF2: 10 kV/A)
          pd_output_ohm=50.0,                     # series output resistor of the detector
          pd_max_hiz_V=10.0,                      # saturation into Hi-Z
@@ -99,7 +103,9 @@ CHANNELS = [
                                                  # loss of bias tee + DC block vs frequency, stage 3 = DC reading through the
                                                  # tee vs direct. 'ask' = pop-up once per session (Cancel = none), a folder
                                                  # (or one stage-2 *_data.h5), or None
-         ac_path_loss_db=0.0,                    # only without bias_tee_cal: loss in dB, or (freqs_Hz, loss_dB)
+         bias_tee_cal_preselect=r'C:\Users\Group Login\Documents\Jeppe_Surrow\Bias_tee\Bias_tee_no_1_full_charac_inc_DC',
+                                                 # the bias_tee_cal pop-up opens in this folder; '' = the newest run
+         ac_path_loss_db=0.0,                   # only without bias_tee_cal: loss in dB, or (freqs_Hz, loss_dB)
          noise_bw_factor=1.065),                 # noise bandwidth of the RBW filter / RBW (Gaussian filter: 1.065)
     # dict(name='PD2', esa='ssa', esa_ip='192.168.1.11', keithley_ip='192.168.1.xxx', ...),
 ]
@@ -165,8 +171,9 @@ COMPARE_HIGHFINESSE = True       # True: every measurement asks you to start the
                                   #   <timestamp>_rin_vs_highfinesse.pdf/.svg   both + ESA - HighFinesse in the same bins
                                   #   <timestamp>_rin_vs_highfinesse_<channel>.csv
                                   # Compare again later (other HighFinesse file): rin_compare_highfinesse.py
-HIGHFINESSE_FOLDER = 'HighFinesse'   # where you save them: a folder name = next to the label folders (in SAVE_FOLDER),
-                                     # or an absolute path
+HIGHFINESSE_FOLDER = 'HighFinesse'   # where you save them: a folder name = a subfolder of the label folder
+                                     # (SAVE_FOLDER/<label>/HighFinesse, created as soon as the label is chosen, before
+                                     # anything is measured), or an absolute path = one folder for every label
 HIGHFINESSE_DB_AVERAGING_CORRECTION = True
 # The HighFinesse averages its Av count = N spectra in dB, NOT in power, so its noise reads LOW (tested 2026-10-17 with
 # N = 1, 2, 5, 10, 20: exactly as predicted). Every exported FFT line is on average 2.51 dB low; after the linear mean
@@ -205,6 +212,7 @@ def main():
     label = rin.bt.safe_name(label) or 'unlabelled'
     print('Label: %s\nSaving in: %s\nChannels: %s' % (label, os.path.join(cfg.SAVE_FOLDER, label),
                                                       ', '.join(c['name'] for c in cfg.CHANNELS)))
+    rin.prepare_label_folder(cfg, label)  # label folder + its HighFinesse folder, before anything is measured
 
     R = rin.RinSetup(cfg)
     try:
@@ -228,6 +236,8 @@ def main():
             if nxt == 'b':
                 background = R.measure_background()
             else:
+                if nxt[0] != label:
+                    rin.prepare_label_folder(cfg, nxt[0])   # new label: its folders before the next series starts
                 label, n = nxt
     except rin.NotConfirmed as e:
         print('\n%s' % e)

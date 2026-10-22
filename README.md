@@ -13,6 +13,8 @@ Current projects ongoing are:
 
     -Coherent receiver
 
+    -HighFinesse LWA-1k automation from Python (HighFinesse_LWA)
+
 To avoid conflicts create a new branch by
     "git checkout -b branch_name" 
     or navigate to home page of repository, click "<n> branches", and click "New Branch".

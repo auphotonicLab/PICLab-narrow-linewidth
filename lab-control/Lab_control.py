@@ -924,12 +924,13 @@ class AFG_Siglent:
         self.instr = rm.open_resource(resourceName)
         alive = self.instr.query('*IDN?')
 
+        # LOAD first: the SDG keeps the output voltage when the load setting changes and re-labels the amplitude, so an
+        # amplitude written before switching e.g. HZ -> 50 ends up halved (AMP 0.02 -> 0.01 V, seen 2026-10-20)
+        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
         self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
         self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
         self.instr.write('C' + str(channel) + ':BSWV OFST,' + ('+' if offset >= 0 else '-') + str(abs(offset)))  # sign is required by the SDG
-
-        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
 
         if alive != 0:
             print('AFG_SIGLENT is alive')
@@ -943,19 +944,18 @@ class AFG_Siglent:
                       offset=0,
                       load = 50 # Use 50 or 'HZ'
                       ):
-    
+
+        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))   # first, see __init__
         self.instr.write('C' + str(channel) + ':BSWV WVTP,' + waveform )
-        
+
         if waveform != 'DC':
             self.instr.write('C' + str(channel) + ':BSWV FRQ,' + str(frequency))  # hz
             self.instr.write('C' + str(channel) + ':BSWV AMP,' + str(vpp))  # Vpp
-        
-        if offset >= 0: 
+
+        if offset >= 0:
             self.instr.write('C' + str(channel) + ':BSWV OFST,+' + str(offset))  # Vpp
         else:
             self.instr.write('C' + str(channel) + ':BSWV OFST,-' + str(abs(offset)))  # Vpp
-                
-        self.instr.write('C' + str(channel) + ':OUTP LOAD,' + str(load))
 
 
     def setPRBS(self, channel=1, bit_rate=1e9, sequence='PRBS7',
@@ -978,6 +978,7 @@ class AFG_Siglent:
             Load impedance in Ohm, or 'HZ' for high-impedance.
         """
         ch = 'C' + str(channel)
+        self.instr.write(ch + ':OUTP LOAD,' + str(load))           # first, see __init__
         self.instr.write(ch + ':BSWV WVTP,PRBS')
         self.instr.write(ch + ':BSWV FRQ,' + str(int(bit_rate)))   # SDG6022X uses FRQ for PRBS bit rate
         self.instr.write(ch + ':PRBS BRAT,' + str(int(bit_rate)))  # belt-and-suspenders
@@ -985,7 +986,6 @@ class AFG_Siglent:
         self.instr.write(ch + ':BSWV AMP,' + str(amplitude))
         self.instr.write(ch + ':BSWV OFST,0')  # pure AC; DC offset handled by SPD3303X
         self.instr.write(ch + ':BSWV PHSE,0')  # reference phase for clock alignment
-        self.instr.write(ch + ':OUTP LOAD,' + str(load))
 
     def setClock(self, channel=2, bit_rate=1e9, amplitude=3.3, offset=1.65,
                 load='HZ', rise_time=2e-9):
@@ -1014,6 +1014,7 @@ class AFG_Siglent:
             Rise/fall time in seconds (default 2 ns — SDG6022X minimum).
         """
         ch = 'C' + str(channel)
+        self.instr.write(ch + ':OUTP LOAD,' + str(load))   # first, see __init__
         self.instr.write(ch + ':BSWV WVTP,SQUARE')
         self.instr.write(ch + ':BSWV FRQ,' + str(bit_rate))
         self.instr.write(ch + ':BSWV AMP,' + str(amplitude))
@@ -1021,7 +1022,6 @@ class AFG_Siglent:
         self.instr.write(ch + ':BSWV DUTY,50')
         self.instr.write(ch + ':BSWV RISE,' + str(rise_time))
         self.instr.write(ch + ':BSWV PHSE,0')   # align starting edge to channel 1
-        self.instr.write(ch + ':OUTP LOAD,' + str(load))
 
     def output_status(self, channel=1, status='ON'):
         self.instr.write('C' + str(channel) + ':OUTP ' + str(status))
