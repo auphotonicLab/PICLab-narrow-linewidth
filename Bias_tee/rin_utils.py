@@ -29,6 +29,7 @@ import math
 import glob
 import json
 import time
+import sys
 import shutil
 import hashlib
 from datetime import datetime
@@ -131,6 +132,12 @@ def validate_config(cfg):
         raise ValueError('SPLIT_RATIO must be a positive number (detector arm / other arm) or None, got %r' % (sr,))
     if cfg.COMPARE_HIGHFINESSE and not cfg.BINS_PER_DECADE:
         raise ValueError('COMPARE_HIGHFINESSE needs BINS_PER_DECADE > 0 (both RIN spectra are compared in the same bins)')
+    src = getattr(cfg, 'HIGHFINESSE_SOURCE', 'file')
+    if src not in ('python', 'file'):
+        raise ValueError("HIGHFINESSE_SOURCE must be 'python' or 'file', got %r" % (src,))
+    n_hf = getattr(cfg, 'HF_AVERAGES', None)
+    if n_hf is not None and not (isinstance(n_hf, int) and n_hf >= 1):
+        raise ValueError('HF_AVERAGES must be None (= as many as the ESA) or an integer >= 1, got %r' % (n_hf,))
 
     need = 1.2 * max(c['pd_max_hiz_V'] for c in chans) + 1.0
     if cfg.KEITHLEY_VLIM_V < need:
@@ -257,6 +264,10 @@ class EsaFSW(_Esa):
         if got != coupling:
             raise RuntimeError('ESA coupling is %s, wanted %s' % (got, coupling))
 
+    def set_ref_level(self, dbm):
+        self.instr.write('DISP:TRAC:Y:RLEV %g' % dbm)
+        return float(self.instr.query('DISP:TRAC:Y:RLEV?'))
+
     def setup(self, cfg):
         """Everything that is the same for all segments."""
         w = self.instr.write
@@ -329,6 +340,10 @@ class EsaSSA(_Esa):
         w(':AVER:TRAC1:COUN %d' % navg)
         return {'start_hz': float(q(':FREQ:STAR?')), 'stop_hz': float(q(':FREQ:STOP?')), 'rbw_hz': float(q(':BWID?')),
                 'vbw_hz': float(q(':BWID:VID?')), 'sweep_time_s': float(q(':SWE:TIME?'))}
+
+    def set_ref_level(self, dbm):
+        self.instr.write(':DISP:WIND:TRAC:Y:SCAL:RLEV %g' % dbm)
+        return float(self.instr.query(':DISP:WIND:TRAC:Y:SCAL:RLEV?'))
 
     def acquire(self):
         self.instr.write(':AVER:TRAC1:CLE')
@@ -737,9 +752,12 @@ class RinSetup:
         self.keep_session = False
         self.last_h5 = None
         self.timing_shown = set()
+        self.hf = None                                     # HighFinessePython (HIGHFINESSE_SOURCE = 'python')
         kept = take_session(cfg)                           # before anything can fail: a failed start ends the session
         print('Connecting to instruments...')
         try:
+            if hf_python_enabled(cfg):                     # first: a GUI that is not running stops the start at once
+                self.hf = HighFinessePython(cfg)
             for spec in cfg.CHANNELS:
                 self.channels.append(Channel(cfg, spec))
         except BaseException:
@@ -1182,6 +1200,10 @@ def prepare_highfinesse(cfg, hf):
         hf['correction_db'], hf['corrected'] = 0.0, False
         hf['correction_text'] = ('HighFinesse NOT corrected: "Av count" missing in the file header, so its dB-averaging '
                                  'bias (up to -2.51 dB) is unknown')
+    elif 'python power average' in str(hf['header'].get('Binning mode', '')).lower():
+        hf['correction_db'], hf['corrected'] = 0.0, True
+        hf['correction_text'] = ('HighFinesse file written by Python (%s): power-averaged, so no dB-averaging correction '
+                                 'is needed (+0.00 dB)' % hf['header']['Binning mode'])
     else:
         hf['correction_db'], hf['corrected'] = abs(hf_db_averaging_bias_db(n)), True
         if n == 1:
@@ -1207,7 +1229,7 @@ def prepare_label_folder(cfg, label):
     so the HighFinesse software can be pointed at it in advance. -> the label folder."""
     folder = os.path.join(cfg.SAVE_FOLDER, label)
     os.makedirs(folder, exist_ok=True)
-    if getattr(cfg, 'COMPARE_HIGHFINESSE', False):
+    if getattr(cfg, 'COMPARE_HIGHFINESSE', False) and not hf_python_enabled(cfg):   # Python capture: no files to save
         d = highfinesse_dir(cfg, folder)
         os.makedirs(d, exist_ok=True)
         print('HighFinesse files: save them in  %s' % d)
@@ -1297,6 +1319,8 @@ def format_bands(c):
 
 
 def _hf_state(hf):
+    if _hf_is_python(hf):
+        return 'Python power average of %d captures, no correction needed' % hf['n_captures']
     return 'corrected' if hf.get('corrected') else 'as exported, NOT corrected'
 
 
@@ -1355,6 +1379,152 @@ def collect_highfinesse(cfg, t_start, base):
     return hf
 
 
+# -----------------------------------------------------------------------------
+# HighFinesse captured from Python (HIGHFINESSE_SOURCE = 'python')
+# -----------------------------------------------------------------------------
+HF_PYTHON_DOC = """\
+HIGHFINESSE_SOURCE = 'python': the HighFinesse spectra are read straight from the running HighFinesse GUI
+(LWA_Control.exe) by HighFinesse_LWA/lwa_utils.py - no export, no file prompt. While the ESA sweeps, n single
+captures are taken and averaged in LINEAR power, 10 log10(mean(10^(RIN_dB/10))), exactly as the ESA averages its
+sweeps (RMS detector, power average). n = HF_AVERAGES, or with None the same number as the ESA (ESA_AVERAGES).
+A power average has no dB-averaging bias, so no correction is added (correction_db = 0). Every single capture is
+kept in the h5 (HF_SAVE_CAPTURES). Verified 2026-10-21: a Python capture equals the GUI's raw export of the same
+capture (to the 1e-10 digits of the export), ~0.5 s per capture.
+GUI: Noise mode = RIN (checked at the start), Digitizer Averaging = Off (cannot be read remotely - check it)."""
+
+
+def hf_python_enabled(cfg):
+    return bool(getattr(cfg, 'COMPARE_HIGHFINESSE', False)) and getattr(cfg, 'HIGHFINESSE_SOURCE', 'file') == 'python'
+
+
+def hf_n_average(cfg, esa_averages):
+    """Captures per HighFinesse measurement: HF_AVERAGES, or (None) as many as the ESA sweeps it is compared with."""
+    n = getattr(cfg, 'HF_AVERAGES', None)
+    return int(n) if n else int(esa_averages)
+
+
+def import_lwa_utils():
+    """HighFinesse_LWA/lwa_utils.py (next to this folder in the repository)."""
+    d = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'HighFinesse_LWA'))
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import lwa_utils
+    return lwa_utils
+
+
+class HighFinessePython:
+    """The HighFinesse LWA through its running GUI: n single captures, power-averaged in Python (HF_PYTHON_DOC).
+    start(n) runs them in a background thread (while the ESA sweeps), join() returns the average."""
+
+    def __init__(self, cfg):
+        self.lu = lu = import_lwa_utils()
+        self.cfg = cfg
+        self.timeout_s = float(getattr(cfg, 'HF_CAPTURE_TIMEOUT_S', 60.0))
+        self.datasets = tuple(getattr(cfg, 'HF_DATASETS', ('noise', 'lineshape')))
+        self.lwa = lu.LWA1k(verbose=False)                 # raises LWAError with the reason if the GUI is not there
+        self.source_file = lu.__file__
+        st = self.lwa.status()
+        if not lu.states_nominal(st['states']):
+            print('WARNING: HighFinesse instrument state %s is not nominal (digitizer / analyzer connected, in range)'
+                  % st['states'])
+        try:                                               # test capture: RIN mode? lineshape evaluated in this mode?
+            cap = self.lwa.capture(self.datasets, min(self.timeout_s, 15.0), results=False)
+        except lu.LWAError:
+            if self.datasets == ('noise',):
+                raise
+            self.datasets = ('noise',)
+            print('NOTE: the HighFinesse delivered no lineshape - only the noise spectrum is requested from now on '
+                  '(this switches its lineshape Autoeval to Inactive)')
+            cap = self.lwa.capture(self.datasets, self.timeout_s, results=False)
+        if lu.detect_scale(cap['noise']['y']) != 'db':
+            raise RuntimeError('The HighFinesse GUI is in FN mode: set Analyzer -> Noise mode = RIN, then start again')
+        self.n_points = len(cap['noise']['y'])
+        print('HighFinesse (Python, %s): RIN mode, %d lines %s - %s, test capture %.2f s, state %s'
+              % (os.path.basename(self.lwa.gui_path or 'LWA_Control.exe'), self.n_points, _hz(cap['noise']['x'][0]),
+                 _hz(cap['noise']['x'][-1]), cap['duration_s'], st['states']))
+        print('  Keep the HighFinesse GUI on Digitizer Averaging = OFF (Python averages; this cannot be read remotely)')
+        self._thread, self._result, self._error = None, None, None
+
+    def acquire(self, n, stop=None):
+        caps = []
+        for _ in range(n):
+            if stop is not None and stop.is_set():
+                break
+            caps.append(self.lwa.capture(self.datasets, self.timeout_s, results=False))
+        if not caps:
+            raise RuntimeError('no HighFinesse capture')
+        return self.lu.average_captures(caps, ('noise',), {'noise': 'db'}, mode='power')
+
+    def start(self, n):
+        import threading
+        self._result, self._error = None, None
+        self._stop = threading.Event()
+
+        def run():
+            try:
+                self._result = self.acquire(n, self._stop)
+            except BaseException as e:                     # reported by join(); never lose the ESA measurement
+                self._error = e
+        self._n = n
+        self._thread = threading.Thread(target=run, name='HighFinesse', daemon=True)
+        self._thread.start()
+
+    def join(self):
+        """-> the averaged measurement (lwa_utils.average_captures), or None after a failure (printed)."""
+        if self._thread is None:
+            return None
+        self._thread.join()
+        self._thread = None
+        if self._error is not None:
+            print('  WARNING: HighFinesse capture failed (%s) - no HighFinesse comparison for this measurement'
+                  % self._error)
+            return None
+        m = self._result
+        print('  HighFinesse: %d captures (power-averaged) in %.1f s, %.2f s each%s'
+              % (m['n'], m['duration_s'], m['duration_s'] / m['n'],
+                 '' if m['states_nominal'] else '  <-- instrument state NOT nominal during the captures'))
+        return m
+
+    def abort(self):
+        if self._thread is not None:
+            self._stop.set()
+            self._thread.join(timeout=2 * self.timeout_s)
+            self._thread = None
+
+
+def hf_from_python(cfg, meas, base=None, write_txt=False):
+    """Averaged Python capture -> the same dict as parse_highfinesse + prepare_highfinesse give for a file, so every
+    comparison / plot works unchanged. write_txt: also <base>_highfinesse.txt in the GUI export layout (Averaging = 0:
+    rin_compare_highfinesse.py / hf_av_count then add no correction - right for a power average)."""
+    lu = import_lwa_utils()
+    nz = meas['noise']
+    n, t0 = int(meas['n']), float(meas['t_start'])
+    caps = meas['captures']
+    header = {'Device': 'LWA-1k 1550 (captured with lwa_utils.py)', 'Outputmode': 'RIN mode',
+              'Timestamp': datetime.fromtimestamp(t0).strftime('%H:%M:%S'), 'Averaging': '0', 'Av count': '0',
+              'Binning mode': 'raw; Python power average of %d capture(s)' % n, 'Source': 'python',
+              'Captures': str(n), 'Duration_s': '%.2f' % meas['duration_s'],
+              'States': json.dumps(caps[-1].get('states', {}))}
+    path = None
+    if write_txt and base:
+        path = base + '_highfinesse.txt'
+        lu.write_gui_format(path, nz['x'], nz['y'], fn=False, n_avg=n, averaging='power', t=t0)
+        print('  Saved: %s' % path)
+    return {'file': os.path.normpath(path) if path else 'HighFinesse Python capture (power average of %d)' % n,
+            'header': header, 'f': np.asarray(nz['x'], float), 'db': np.asarray(nz['y'], float),
+            'binned_export': False, 'image': None, 'source': 'python', 'av_count': n, 'n_captures': n,
+            'correction_db': 0.0, 'corrected': True,
+            'correction_text': ('HighFinesse read from Python: power average of %d single captures, as the ESA averages '
+                                '- no dB-averaging correction needed (+0.00 dB)' % n),
+            'captures_db': np.asarray(nz['all']), 'capture_t_start_unix_s': np.array([c['t_start'] for c in caps]),
+            'capture_duration_s': np.array([c['duration_s'] for c in caps]), 't_start_unix_s': t0,
+            'duration_s': float(meas['duration_s']), 'states_nominal': bool(meas['states_nominal'])}
+
+
+def _hf_is_python(hf):
+    return hf.get('source') == 'python'
+
+
 def _hf_colour(n_channels):
     return bt.CATEGORICAL[n_channels] if n_channels < len(bt.CATEGORICAL) else bt.INK2
 
@@ -1384,14 +1554,22 @@ def make_highfinesse_rin_report(cfg, label, stamp, hf, n_channels, base_path, li
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, ax = plt.subplots(figsize=(8.5, 5.0))
         fig.patch.set_facecolor(bt.SURFACE)
+        spacing = _hz(float(np.median(np.diff(hf['f']))))
         ax.plot(hf['f'], hf['db'], color=colour, lw=0.5, alpha=0.3, rasterized=True,
-                label='every FFT line as exported (%d, %s apart; dB-averaged: noise reads 2.51 dB low)'
-                      % (len(hf['f']), _hz(float(np.median(np.diff(hf['f']))))))
+                label=('every FFT line (%d, %s apart), power average of %d captures' % (len(hf['f']), spacing,
+                                                                                      hf['n_captures']))
+                if _hf_is_python(hf) else
+                ('every FFT line as exported (%d, %s apart; dB-averaged: noise reads 2.51 dB low)' % (len(hf['f']), spacing)))
         if corr:
             ax.plot(fb, db_raw, '--', color=colour, lw=0.9, label='%d bins per decade, linear mean, as exported' % nb)
-        ax.plot(fb, db, color=colour, lw=1.6, label=('%d bins per decade, linear mean, corrected %+.2f dB (dB averaging, '
-                'Av count %s)' % (nb, corr, hf.get('av_count'))) if hf.get('corrected') else
-                ('%d bins per decade, linear mean, as exported (NOT corrected)' % nb))
+        if _hf_is_python(hf):
+            lab = '%d bins per decade, linear mean (Python power average, no correction needed)' % nb
+        elif hf.get('corrected'):
+            lab = ('%d bins per decade, linear mean, corrected %+.2f dB (dB averaging, Av count %s)'
+                   % (nb, corr, hf.get('av_count')))
+        else:
+            lab = '%d bins per decade, linear mean, as exported (NOT corrected)' % nb
+        ax.plot(fb, db, color=colour, lw=1.6, label=lab)
         ax.set_xscale('log')
         if lims:
             ax.set_xlim(lims[0])
@@ -1415,9 +1593,11 @@ def make_compare_report(cfg, label, stamp, results, hf, cmp, base_path, lims=Non
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 7.6), sharex=True, gridspec_kw={'height_ratios': [3, 1.5]})
         fig.patch.set_facecolor(bt.SURFACE)
-        ax1.plot(fb, db, color=_hf_colour(len(results)), lw=1.6, label='HighFinesse LWA, %s (%s, %s)'
-                 % (('corrected %+.2f dB for its dB averaging' % corr) if hf.get('corrected') else
-                    'as exported, NOT corrected', os.path.basename(hf['file']), hf['header'].get('Timestamp', '?')))
+        state = (_hf_state(hf) if _hf_is_python(hf) else
+                 ('corrected %+.2f dB for its dB averaging' % corr) if hf.get('corrected') else 'as exported, NOT corrected')
+        ax1.plot(fb, db, color=_hf_colour(len(results)), lw=1.6,
+                 label=('HighFinesse LWA, %s (%s)' % (state, hf['header'].get('Timestamp', '?'))) if _hf_is_python(hf) else
+                 ('HighFinesse LWA, %s (%s, %s)' % (state, os.path.basename(hf['file']), hf['header'].get('Timestamp', '?'))))
         spread = [3.0]
         for i, (name, res) in enumerate(results.items()):
             c, b, d = bt.CATEGORICAL[i], res['binned'], cmp[name]
@@ -1474,9 +1654,23 @@ def _write_highfinesse(hf_group, cfg, hf, cmp):
     hf_group.attrs['db_averaging_correction_dB'] = float(hf.get('correction_db', 0.0))
     hf_group.attrs['db_averaging_correction'] = hf.get('correction_text', '')
     hf_group.attrs['db_averaging_doc'] = HF_AVERAGING_DOC
+    hf_group.attrs['source'] = hf.get('source', 'file')
     hf_group.create_dataset('frequency_Hz', data=hf['f'], **ckw)
-    hf_group.create_dataset('rin_dB_Hz', data=hf['db'], **ckw)                    # every FFT line, as exported
-    hf_group['rin_dB_Hz'].attrs['note'] = 'as exported (dB-averaged: noise reads 2.51 dB low on average)'
+    hf_group.create_dataset('rin_dB_Hz', data=hf['db'], **ckw)                    # every FFT line
+    if _hf_is_python(hf):
+        hf_group.attrs['python_doc'] = HF_PYTHON_DOC
+        hf_group.attrs['n_captures'] = hf['n_captures']
+        hf_group.attrs['t_start_unix_s'], hf_group.attrs['duration_s'] = hf['t_start_unix_s'], hf['duration_s']
+        hf_group.attrs['states_nominal'] = hf['states_nominal']
+        hf_group['rin_dB_Hz'].attrs['note'] = ('power average of the %d captures: 10 log10(mean(10^(captures/10))) - '
+                                               'no dB-averaging bias' % hf['n_captures'])
+        hf_group.create_dataset('capture_t_start_unix_s', data=hf['capture_t_start_unix_s'])
+        hf_group.create_dataset('capture_duration_s', data=hf['capture_duration_s'])
+        if getattr(cfg, 'HF_SAVE_CAPTURES', True) and hf.get('captures_db') is not None:
+            ds = hf_group.create_dataset('captures_dB_Hz', data=np.asarray(hf['captures_db'], np.float32), **ckw)
+            ds.attrs['note'] = 'every single capture as the GUI published it (dB/Hz), one row per capture'
+    else:
+        hf_group['rin_dB_Hz'].attrs['note'] = 'as exported (dB-averaged: noise reads 2.51 dB low on average)'
     fb, db = bin_highfinesse(hf, cfg.BINS_PER_DECADE, corrected=True)
     bg = hf_group.create_group('binned')
     bg.attrs['note'] = 'linear mean in the logarithmic bins; rin_corrected = rin_as_exported + db_averaging_correction_dB'
@@ -1484,7 +1678,7 @@ def _write_highfinesse(hf_group, cfg, hf, cmp):
     bg.create_dataset('rin_as_exported_dB_Hz', data=bin_highfinesse(hf, cfg.BINS_PER_DECADE, corrected=False)[1], **ckw)
     bg.create_dataset('rin_corrected_dB_Hz', data=db, **ckw)
     for name, path in (('file_bytes', hf['file']), ('image_bytes', hf['image'])):
-        if path and os.path.isfile(path):
+        if path and os.path.isfile(path) and not _hf_is_python(hf):     # a Python .txt is written from rin_dB_Hz
             hf_group.create_dataset(name, data=np.frombuffer(open(path, 'rb').read(), np.uint8), compression='gzip')
     for ch, c in cmp.items():
         g = hf_group.create_group('compared_' + ch)
@@ -1643,6 +1837,15 @@ def _write_segments(group, segs, with_settings=True):
                 sg.attrs[cmd] = reply
 
 
+def write_sources(group, paths):
+    """The exact source files (read back with bt.extract_script), with their sha256."""
+    for path in paths:
+        data = open(path, 'rb').read()
+        ds = group.create_dataset(os.path.basename(path), data=np.frombuffer(data, np.uint8), compression='gzip',
+                                  compression_opts=9)
+        ds.attrs['sha256'] = hashlib.sha256(data).hexdigest()
+
+
 def write_rin_h5(path, cfg, R, label, laser, background, results, log_idx, prompt_idx, hfm=None, cmp=None):
     """One HDF5 file per measurement.
 
@@ -1657,10 +1860,13 @@ def write_rin_h5(path, cfg, R, label, laser, background, results, log_idx, promp
         keithley_settings          attrs: what the Keithley reported back
         laser/sNN                  frequency_Hz, trace_dBm (as read from the ESA) + attrs (RBW, sweep time, v_dc before/after)
         background/sNN             the same with the laser blocked (what load_background() reads)
-    /highfinesse                   (COMPARE_HIGHFINESSE) the simultaneous HighFinesse file: frequency_Hz, rin_dB_Hz (as
-                                   exported), binned/rin_as_exported_dB_Hz + rin_corrected_dB_Hz, attrs av_count,
-                                   db_averaging_correction_dB (+ the text and HF_AVERAGING_DOC), header, the file and
-                                   screenshot bytes, compared_<channel>/ (COMPARE_COLUMNS)
+    /highfinesse                   (COMPARE_HIGHFINESSE) the simultaneous HighFinesse spectrum: frequency_Hz, rin_dB_Hz,
+                                   binned/rin_as_exported_dB_Hz + rin_corrected_dB_Hz, attrs source, av_count,
+                                   db_averaging_correction_dB (+ the text and HF_AVERAGING_DOC), header,
+                                   compared_<channel>/ (COMPARE_COLUMNS).
+                                   source 'python': rin_dB_Hz = power average of the captures, captures_dB_Hz (every
+                                   capture), capture_t_start_unix_s, n_captures; correction 0.
+                                   source 'file': rin_dB_Hz as exported, the file and screenshot bytes
     """
     ckw = dict(compression='gzip', compression_opts=6, shuffle=True)
     with h5py.File(path, 'w') as hf:
@@ -1679,10 +1885,10 @@ def write_rin_h5(path, cfg, R, label, laser, background, results, log_idx, promp
         cg.attrs['config_json'] = json.dumps(vars(cfg), default=str, indent=1, sort_keys=True)
         hf.create_group('analysis').attrs['formulas'] = compute_rin.__doc__
         bt._write_provenance(hf)
-        for name in ('rin_measurement.py', 'rin_utils.py'):
-            data = open(os.path.join(bt._here, name), 'rb').read()
-            ds = hf['script'].create_dataset(name, data=np.frombuffer(data, np.uint8), compression='gzip', compression_opts=9)
-            ds.attrs['sha256'] = hashlib.sha256(data).hexdigest()
+        sources = [os.path.join(bt._here, name) for name in ('rin_measurement.py', 'rin_utils.py')]
+        if R.hf is not None:
+            sources.append(R.hf.source_file)                # HighFinesse_LWA/lwa_utils.py
+        write_sources(hf['script'], sources)
         lg = hf.create_group('log')
         lg.create_dataset('console_log', data='\n'.join(R.tee.lines[log_idx:]), dtype=h5py.string_dtype('utf-8'))
         lg.create_dataset('prompts', data=['[%s] %s' % pr for pr in bt.PROMPT_LOG[prompt_idx:]], dtype=h5py.string_dtype('utf-8'))
@@ -1744,15 +1950,30 @@ def run_measurement(R, label, background):
     log_idx, prompt_idx = len(R.tee.lines), len(bt.PROMPT_LOG)
     print('\nMeasuring RIN  [%s]  ->  %s' % (label, folder))
     hfm = cmp = None
-    if cfg.COMPARE_HIGHFINESSE:
+    python_hf = cfg.COMPARE_HIGHFINESSE and R.hf is not None
+    if cfg.COMPARE_HIGHFINESSE and not python_hf:
         bt.ask('HIGHFINESSE: START its RIN measurement now (same laser, other arm of the splitter), with averaging on.\n'
                '  The ESA measurement starts when you press ENTER; save the HighFinesse file ("raw data") and a\n'
                '  screenshot AFTER it, in  %s\n'
                '  (The HighFinesse averages in dB, so its noise reads low; the comparison corrects that using the\n'
                '  Av count written in the HighFinesse file.)' % highfinesse_dir(cfg, folder))
     t_start = time.time()
-    laser = R.measure('laser')
-    if cfg.COMPARE_HIGHFINESSE:
+    if python_hf:                                          # captured while the ESA sweeps, power-averaged
+        n_hf = hf_n_average(cfg, cfg.ESA_AVERAGES)
+        print('  HighFinesse: %d single captures read from Python while the ESA sweeps (power average, as the ESA)' % n_hf)
+        R.hf.start(n_hf)
+    try:
+        laser = R.measure('laser')
+    except BaseException:
+        if python_hf:
+            R.hf.abort()
+        raise
+    if python_hf:
+        meas = R.hf.join()
+        if meas:
+            hfm = hf_from_python(cfg, meas, base, getattr(cfg, 'HF_WRITE_GUI_TXT', True))
+            print('  %s' % hfm['correction_text'])
+    elif cfg.COMPARE_HIGHFINESSE:
         hfm = collect_highfinesse(cfg, t_start, base)
     results = {}
     for ch in R.channels:

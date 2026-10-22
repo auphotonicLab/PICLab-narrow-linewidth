@@ -194,3 +194,49 @@ read of any DC leaking through the bias tee capacitor to the AC output port. Mea
 level** (0–3.5 V SDG offset, i.e. 0–7 V at the DC port) — identical to the 0 V case and consistent with the scope's
 own offset error. The bias tee capacitor blocks DC essentially perfectly across the full 1 kHz – 10 MHz band.
 `v_scope_dc` is stored per frequency point in the h5 and plotted in `_report.pdf` (bottom panel).
+
+---
+
+## 6. RIN measurement and AM response test: HighFinesse read from Python
+
+`rin_measurement.py` and `am_response_test.py` read the HighFinesse LWA directly from its running GUI
+(`HIGHFINESSE_SOURCE = 'python'`, the default) through `../HighFinesse_LWA/lwa_utils.py`. There is no export
+and no prompt, and every single capture is kept in the h5.
+
+* **Averaging as the ESA:** while the ESA sweeps, `HF_AVERAGES` single captures are taken (`None` = as many as the
+  ESA averages, `ESA_AVERAGES` = 20). They are averaged in **linear power**, like the ESA's RMS detector + power
+  average, so **no dB-averaging correction** is applied (0 dB). The GUI's own averaging (in dB, −2.17 dB at n = 10)
+  is not used.
+* **HighFinesse GUI:** Noise mode **RIN** (checked at the start; FN stops the script) and Digitizer
+  **Averaging Off** (cannot be read remotely). Do not click in the GUI while a measurement runs.
+* `HIGHFINESSE_SOURCE = 'file'` restores the old way: you save "raw data" exports, which are corrected for the dB
+  averaging from their *Av count*. A `.txt` written by Python (`HF_WRITE_GUI_TXT`) says
+  `Python power average` in its header and is never corrected, also not by `rin_compare_highfinesse.py`.
+
+**AM response test, per tone:**
+
+1. ESA zoom around the tone (`TONE_*`).
+2. Scope, if `SCOPE_ENABLE`.
+3. **Full-span RIN measurement**, if `FULL_SPAN_RIN`. It is taken exactly as `rin_measurement.py` takes it:
+   * the same `ESA_SEGMENTS`, i.e. two sweeps, 1–100 kHz at RBW 10 Hz / VBW 100 Hz and 0.1–10 MHz at RBW 100 Hz /
+     VBW 1 kHz;
+   * the same `ESA_AVERAGES` and reference level;
+   * a full-span background (laser blocked).
+
+   The HighFinesse is captured **during** these sweeps.
+4. ESA zoom again, for the drift.
+
+New results per tone:
+* the tone as a RIN measurement sees it: integrated over ±5 RBW of its trace (~0.2 dB uncertain with one point per
+  RBW). A tone on the 100 kHz boundary of the two sweeps is only partly in either trace and is flagged as `edge`;
+* the noise next to it;
+* the whole RIN compared with the HighFinesse in the same bins. The median over all bins is reported, plus the
+  per-decade values without the bins of the tone.
+
+**Tone placement:** `TONES_HZ` are at the centres of the log bins (10^((k + 0.5)/50), rounded to 100 Hz), e.g.
+10.2 kHz instead of 10 kHz, and 107.2 kHz instead of 100 kHz. Round values sit exactly on bin edges, where the ESA and the
+HighFinesse put the tone into neighbouring bins. 100 kHz is also the boundary of the two full-span sweeps. At the start,
+`check_tones` warns about any tone near a bin edge or the sweep boundary and suggests a better value.
+
+Outputs: `_am_full_span.pdf` (ESA − HighFinesse per bin for every tone), `_am_full_span/` (the RIN-measurement plot
+per tone), and new `full_span_*` columns in `_am_summary.csv`.

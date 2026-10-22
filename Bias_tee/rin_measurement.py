@@ -15,8 +15,9 @@ Wiring of one channel (CHANNELS: one entry per detector; add a second entry to m
 
 How to use
     1. Fill in CHANNELS (IP addresses) and SAVE_FOLDER.
-    2. Run the script. A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/  (the HighFinesse
-       files go in SAVE_FOLDER/<label>/HighFinesse/, created right after the label pop-up):
+    2. Run the script. A pop-up asks for a label; everything is saved in  SAVE_FOLDER/<label>/  (HIGHFINESSE_SOURCE =
+       'file': the HighFinesse files go in SAVE_FOLDER/<label>/HighFinesse/, created right after the label pop-up;
+       'python': the HighFinesse GUI must be running in RIN mode, nothing is saved by hand):
            <timestamp>_rin_data.h5           all data (raw ESA traces, background, DC readings, settings, script sources)
            <timestamp>_rin_<channel>.csv     every ESA point: frequency, ESA noise, optical noise, RIN
            <timestamp>_rin_<channel>_binned.csv   the same averaged in BINS_PER_DECADE logarithmic bins
@@ -54,11 +55,16 @@ What is computed (rin_utils.compute_rin)
     The background (laser blocked) is subtracted in linear power; points less than MIN_ABOVE_BACKGROUND_DB above it are
     dropped from 'rin' (the csv / h5 also hold the RIN as measured and the floor).
 
-What is done with the HighFinesse file (COMPARE_HIGHFINESSE)
-    Its FFT lines (50 Hz apart) are averaged in LINEAR units in the same log bins as the ESA RIN, then CORRECTED for
-    the HighFinesse's dB averaging (see HIGHFINESSE_DB_AVERAGING_CORRECTION below: +2.33 dB at Av count 20, +2.17 dB
-    at 10, 0 at 1), and only then compared: 'ESA - HighFinesse (corrected)'. Every output says which correction was
-    added; the csv / h5 keep the HighFinesse bins both as exported and corrected.
+What is done with the HighFinesse (COMPARE_HIGHFINESSE)
+    HIGHFINESSE_SOURCE = 'python' (default): no export and no question. The HighFinesse spectra are read from the
+    running HighFinesse GUI by HighFinesse_LWA/lwa_utils.py while the ESA sweeps: ESA_AVERAGES single captures
+    (HF_AVERAGES), averaged in LINEAR power like the ESA's sweeps - so no dB-averaging correction is needed (0 dB).
+    The GUI must be in RIN mode (checked at the start) with its own Averaging Off. Every capture is in the h5.
+    HIGHFINESSE_SOURCE = 'file': as before - you start the HighFinesse with its own averaging and save a "raw data"
+    export; it averages in dB, so its noise is CORRECTED (HIGHFINESSE_DB_AVERAGING_CORRECTION below: +2.33 dB at
+    Av count 20, +2.17 dB at 10, 0 at 1).
+    Either way the FFT lines (50 Hz apart) are averaged in LINEAR units in the same log bins as the ESA RIN and
+    compared: 'ESA - HighFinesse'. Every output says which correction was added (if any).
 
 Safety
     * ESA: the input is switched to DC coupling only after 'yes' to the DC-block question (given in this session), and
@@ -162,19 +168,31 @@ SPLIT_RATIO = 0.1285              # 2026-10-17: fit of 5 levels (0.1-0.92 mW at 
                                   # None = not used. Measure it again whenever the splitter / fibres change.
 
 # --- HighFinesse comparison: a HighFinesse LWA RIN measurement at the same time, on the other arm of the splitter ---
-COMPARE_HIGHFINESSE = True       # True: every measurement asks you to start the HighFinesse measurement before the ESA sweep
-                                  # and to save its RIN .txt + a screenshot afterwards. Save it as "raw data" ("binned data"
-                                  # has only a max / min pair per point above ~60 kHz and is refused). The newest .txt and
-                                  # screenshot saved after the ESA start are used and copied to the label folder:
-                                  #   <timestamp>_rin_highfinesse.txt / _highfinesse_screenshot.png   the files
+COMPARE_HIGHFINESSE = True       # True: every measurement has a HighFinesse RIN spectrum taken during the ESA sweep, either
+                                  # read from Python (HIGHFINESSE_SOURCE = 'python', automatic) or - 'file' - you start the
+                                  # HighFinesse before the sweep and save its RIN .txt + a screenshot afterwards, as "raw
+                                  # data" ("binned data" has only a max / min pair per point above ~60 kHz and is refused;
+                                  # the newest .txt and screenshot saved after the ESA start are used). Outputs:
+                                  #   <timestamp>_rin_highfinesse.txt (+ _highfinesse_screenshot.png for 'file')
                                   #   <timestamp>_rin_highfinesse.pdf/.svg      HighFinesse RIN, same axes as _rin.pdf/.svg
                                   #   <timestamp>_rin_vs_highfinesse.pdf/.svg   both + ESA - HighFinesse in the same bins
                                   #   <timestamp>_rin_vs_highfinesse_<channel>.csv
                                   # Compare again later (other HighFinesse file): rin_compare_highfinesse.py
-HIGHFINESSE_FOLDER = 'HighFinesse'   # where you save them: a folder name = a subfolder of the label folder
+HIGHFINESSE_SOURCE = 'python'     # 'python': read from the running HighFinesse GUI while the ESA sweeps (HighFinesse_LWA/
+                                  #   lwa_utils.py), power-averaged as the ESA - nothing to save by hand, no correction.
+                                  #   HighFinesse GUI: Noise mode RIN, Digitizer Averaging OFF.
+                                  # 'file': the HighFinesse "raw data" export you save yourself (as before, corrected below)
+HF_AVERAGES = None                # python: captures per measurement; None = ESA_AVERAGES (the same number as the ESA)
+HF_WRITE_GUI_TXT = True           # python: also write <timestamp>_rin_highfinesse.txt in the GUI export layout
+                                  # (for rin_compare_highfinesse.py / your own plots; everything is in the h5 anyway)
+HF_SAVE_CAPTURES = True           # python: every single capture in the h5 (/highfinesse/captures_dB_Hz, float32)
+HF_DATASETS = ('noise', 'lineshape')  # python: datasets requested from the GUI ('lineshape' keeps its lineshape
+                                  # Autoeval active; dropped automatically if the GUI delivers none in RIN mode)
+HF_CAPTURE_TIMEOUT_S = 60         # python: one capture must arrive within this
+HIGHFINESSE_FOLDER = 'HighFinesse'   # 'file': where you save them: a folder name = a subfolder of the label folder
                                      # (SAVE_FOLDER/<label>/HighFinesse, created as soon as the label is chosen, before
                                      # anything is measured), or an absolute path = one folder for every label
-HIGHFINESSE_DB_AVERAGING_CORRECTION = True
+HIGHFINESSE_DB_AVERAGING_CORRECTION = True       # 'file' only (a Python power average needs none)
 # The HighFinesse averages its Av count = N spectra in dB, NOT in power, so its noise reads LOW (tested 2026-10-17 with
 # N = 1, 2, 5, 10, 20: exactly as predicted). Every exported FFT line is on average 2.51 dB low; after the linear mean
 # in the log bins used here the bias is 10 N log10(Gamma(1 + 1/N)) dB:
