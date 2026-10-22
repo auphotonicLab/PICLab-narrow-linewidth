@@ -209,11 +209,12 @@ and no prompt, and every single capture is kept in the h5.
   is not used.
 * **HighFinesse GUI:** Noise mode **RIN** (checked at the start; FN stops the script) and Digitizer
   **Averaging Off** (cannot be read remotely). Do not click in the GUI while a measurement runs.
-* `HIGHFINESSE_SOURCE = 'file'` restores the old way: you save "raw data" exports, which are corrected for the dB
+* `rin_measurement.py` only: `HIGHFINESSE_SOURCE = 'file'` restores the old way: you save "raw data" exports, which are corrected for the dB
   averaging from their *Av count*. A `.txt` written by Python (`HF_WRITE_GUI_TXT`) says
   `Python power average` in its header and is never corrected, also not by `rin_compare_highfinesse.py`.
 
-**AM response test, per tone:**
+**AM response test** (Python only; any other averaging, e.g. n = 1 or the GUI's dB average, can be computed afterwards
+from the captures saved in the h5), **per tone:**
 
 1. ESA zoom around the tone (`TONE_*`).
 2. Scope, if `SCOPE_ENABLE`.

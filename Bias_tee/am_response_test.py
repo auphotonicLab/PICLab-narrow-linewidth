@@ -10,8 +10,8 @@ Why
     relative modulation on every arm of the splitter, so
         ESA - HighFinesse (tone)   = the difference of the two frequency responses, no noise statistics involved
                                      (a steady tone is not biased by the HighFinesse dB averaging -> no correction)
-        ESA - HighFinesse (noise)  = the same comparison on the laser noise next to each tone (HighFinesse corrected
-                                     from the Av count of each file) - if both agree, the dB-averaging correction holds
+        ESA - HighFinesse (noise)  = the same comparison on the laser noise next to each tone (both power-averaged:
+                                     no correction involved)
         ESA / HF - scope           = against an independent detector on the scope (SCOPE_ENABLE), see below
         ESA / HF - expected        = from the modulator: m = 2 J1(pi V_pk / V_PI)   (only if V_PI is set)
 
@@ -32,22 +32,15 @@ Per tone (in this order)
                      RBW of the trace it falls in), the noise next to it, and the whole RIN compared with the HighFinesse
                      in the same bins (compare_highfinesse, as rin_measurement.py). A tone on the 100 kHz boundary of the
                      two sweeps is only partly in either trace: flagged ('edge').
-    4. HighFinesse : HIGHFINESSE_SOURCE = 'python' (default): read from the running HighFinesse GUI by
-                     HighFinesse_LWA/lwa_utils.py DURING the full-span sweep (no export, no prompt), HF_AVERAGES single
-                     captures (None = ESA_AVERAGES, as many as the full-span ESA sweeps; TONE_AVERAGES without
-                     FULL_SPAN_RIN) power-averaged like the ESA - no dB-averaging correction. Every capture is in the h5.
+    4. HighFinesse : (COMPARE_HIGHFINESSE) read from the running HighFinesse GUI by HighFinesse_LWA/lwa_utils.py
+                     DURING the full-span sweep (no export, no prompt): HF_AVERAGES single captures (None = ESA_AVERAGES,
+                     as many as the full-span ESA sweeps; TONE_AVERAGES without FULL_SPAN_RIN), power-averaged like the
+                     ESA - no dB-averaging correction. Every capture is in the h5, so any other averaging (n = 1, the
+                     GUI's dB average: lwa_utils.average_captures(mode='gui'), ...) can be computed from it afterwards.
                      HighFinesse GUI: Noise mode RIN (checked), Digitizer Averaging Off.
-                     'file': the exports saved by hand, see below.
+                     (The hand-saved HighFinesse exports of earlier versions are gone from this test; rin_measurement.py
+                     still has them as HIGHFINESSE_SOURCE = 'file'.)
     5. ESA zoom again (ESA_REMEASURE_AFTER_HF): drift of the modulation depth during the tone.
-
-HighFinesse 'file' mode: several files per tone (HF_FILES_PER_TONE)
-    After the ESA (and scope) measurement of a tone you are asked for up to HF_FILES_PER_TONE HighFinesse files, one
-    after the other (each saved after the previous one; 's' = no more files for this tone). Use any Av count and any
-    order: everything is read from the files - each is grouped by the 'Av count' in its own header, its noise corrected
-    for that Av count (rin_utils.prepare_highfinesse), and its place in the order of saving is recorded. Per tone:
-        every file             one row in <timestamp>_am_highfinesse_files.csv
-        each Av count group    hf_tone / ESA - HF tone / ESA - HF noise for that Av count (power mean if several files)
-        all files combined     power mean of the tones (unbiased for any Av count) and of the CORRECTED noise
 
 Scope (SCOPE_ENABLE): an independent detector, the Siglent SDS2352X-E
     m = V_tone,pk / V_dc  directly (a ratio: the same load for AC and DC cancels): no bias tee, ESA, noise bandwidth
@@ -64,14 +57,25 @@ Scope (SCOPE_ENABLE): an independent detector, the Siglent SDS2352X-E
     HighFinesse follows the true modulation versus frequency.
     Accuracy: the frequency dependence to ~0.05 dB; the absolute level only to the scope's DC gain accuracy (a few %
     per channel, i.e. a few tenths of a dB in m^2/2) - use the scope result mainly for the SHAPE versus frequency.
-    SCOPE_PD_CAL (the detector's characterization, same load as the scope input) converts V_dc to the optical power on
-    the detector at every tone; above SCOPE_MAX_POWER_MW or its linear range the tone line is flagged.
+    SCOPE_PD_CAL (the detector's characterization, same load as the scope input, or a Hi-Z one scaled to 50 ohm)
+    converts V_dc to the optical power on the detector at every tone; above DETECTORS[SCOPE_DETECTOR]['max_power_mW']
+    or its linear range the tone line is flagged.
+
+Detectors (ESA_DETECTOR / SCOPE_DETECTOR, settings in DETECTORS)
+    Swap the detectors by swapping the two names. The ESA-chain detector replaces name, pd_model, pd_output_ohm,
+    pd_max_hiz_V, the TIA value and the pd_cal pop-up of the first CHANNELS entry of rin_measurement.py (that file is
+    not changed). The scope detector sets the scope calibration pop-up and the power warning.
+    Output resistance R of the ESA-chain detector: the DC port sees Hi-Z (Keithley), the AC port 50 ohm (ESA), so the
+    open-circuit tone / noise = ESA voltage x (50 + R) / 50: PDA05CF2 R = 50 ohm (x 2), HP11982A R ~ 1 ohm (x 1.02).
+    The scope result is a ratio at ONE load and does not depend on R, so ESA - scope tests it. Direct check of R
+    (constant light): Keithley at the detector V_HiZ, then with a 50 ohm terminator on a BNC T: V_50;
+    R = 50 x (V_HiZ / V_50 - 1). Never load the bias tee DC port with 50 ohm (inductor rating 9 mA).
 
 Modulator response and drift
     The modulator (LiNbO3 MZI) is before the splitter: whatever m(f) it gives - not flat, polarization dependent -
     is the SAME on every arm and cancels in ESA - HighFinesse / ESA - scope. What does not cancel is a CHANGE of m
     between the ESA and the HighFinesse measurement of one tone (polarization drift into the modulator, bias drift):
-    ESA_REMEASURE_AFTER_HF measures the ESA again after the HighFinesse files and reports the drift. The expected level
+    ESA_REMEASURE_AFTER_HF measures the ESA zoom again after the full span / HighFinesse and reports the drift. The expected level
     from V_PI assumes a flat modulator response and is only approximate.
 
 Background (MEASURE_BACKGROUND)
@@ -86,20 +90,18 @@ How the tone level is obtained (relative power of the tone, dBc = m^2 / 2, m = m
                      full-span RIN trace (as measured, per Hz with the noise bandwidth of its RBW) - one point per RBW,
                      so the sum can be off by ~0.2 dB depending on where the tone falls between two points, as in a
                      real RIN measurement.
-    HighFinesse    : sum of (density - noise) x line spacing over +-HF_TONE_HALF_WIDTH_HZ, as exported / averaged.
+    HighFinesse    : sum of (density - noise) x line spacing over +-HF_TONE_HALF_WIDTH_HZ of the power average.
     ESA power -> open-circuit PD voltage exactly as rin_utils.compute_rin (50 ohm divider, bias tee + DC block loss,
     Keithley V_dc corrected to the reading without the tee). Dark offset of the detectors (~ -5 mV) neglected (< 0.01 dB).
 
-Output in SAVE_FOLDER/<label>/  (HighFinesse files: save them in SAVE_FOLDER/<label>/HighFinesse/, created at the start):
+Output in SAVE_FOLDER/<label>/:
     <timestamp>_am_data.h5                 everything: settings, ESA traces (zoom + full span), scope records, HighFinesse
-                                           spectra (python: every capture), results, log
-    <timestamp>_am_summary.csv             one row per tone (with columns per Av count group)
-    <timestamp>_am_highfinesse_files.csv   one row per HighFinesse file
+                                           (average + every capture), results, log
+    <timestamp>_am_summary.csv             one row per tone
     <timestamp>_am_response.pdf/.svg
     <timestamp>_am_full_span.pdf/.svg      (FULL_SPAN_RIN) full-span ESA - HighFinesse in the RIN bins, every tone
     <timestamp>_am_full_span/              (FULL_SPAN_RIN) per tone: RIN ESA vs HighFinesse (as rin_measurement.py)
-    <timestamp>_am_<f>Hz_hf<k>_highfinesse.txt (+ screenshot)   'file': copies of the HighFinesse files
-    <timestamp>_am_<f>Hz_highfinesse.txt   'python' with HF_WRITE_GUI_TXT: the averaged spectrum in the GUI layout
+    <timestamp>_am_<f>Hz_highfinesse.txt   (HF_WRITE_GUI_TXT) the averaged HighFinesse spectrum in the GUI layout
 
 Use the NKT (or another laser with high RIN) for the noise comparison next to the tones. DRIVE_VPP = 20 mV gave
 m ~ 0.7 % (-46 dBc), ~60 dB above the noise in a 50 Hz HighFinesse line (2026-10-19).
@@ -126,7 +128,7 @@ pic = rin.pic
 # dB-averaging correction ... - is taken from rin_measurement.py)
 # =============================================================================
 SAVE_FOLDER = r'C:\Users\Group Login\Documents\Jeppe_Surrow\AM_response'
-DEFAULT_SAVE_LABEL = 'NKT_10mW_EDFA1090mA_ESA_Keithley_bias_tee_PDA05CF2_Scope_HP11982A_HF_n=1_and_n=10'
+DEFAULT_SAVE_LABEL = 'NKT_10mW_EDFA1090mA_ESA_Keithley_bias_tee_HP11982A_Scope_PDA05CF2_HF_Python'
 SHOW_PLOTS = True
 
 # --- tones ---
@@ -141,18 +143,12 @@ TONES_HZ = [10.2e3, 20.4e3, 49e3, 107.2e3, 204.2e3, 295.1e3, 489.8e3, 707.9e3,
 SETTLE_S = 0.5                    # wait after changing the tone frequency
 
 # --- HighFinesse ---
-COMPARE_HIGHFINESSE = True
-HIGHFINESSE_SOURCE = 'python'     # 'python': read from the running HighFinesse GUI during the full-span sweep, power-
-                                  # averaged as the ESA (no correction, no prompts). GUI: Noise mode RIN, Averaging OFF.
-                                  # 'file': the "raw data" exports you save yourself (HF_FILES_PER_TONE per tone)
-HF_AVERAGES = None                # python: captures per tone; None = as many as the ESA it is measured with (ESA_AVERAGES
-                                  # of rin_measurement.py with FULL_SPAN_RIN, else TONE_AVERAGES)
-HF_WRITE_GUI_TXT = False          # python: also a GUI-layout .txt per tone (~6 MB each; everything is in the h5 anyway)
-HF_SAVE_CAPTURES = True           # python: every single capture in the h5 (float32, ~10 MB per tone)
-HIGHFINESSE_FOLDER = 'HighFinesse'  # 'file': where you save the HF files: a name = SAVE_FOLDER/<label>/HighFinesse
-                                     # (created when the label is chosen), or an absolute path
-HF_FILES_PER_TONE = 2             # 'file': HighFinesse files asked for per tone (any Av count, any order: read from each
-                                  # file; 's' at the prompt = no more files for this tone)
+COMPARE_HIGHFINESSE = True        # read from the running HighFinesse GUI (Python) during the full-span sweep, power-
+                                  # averaged as the ESA - no correction, no prompts. GUI: Noise mode RIN, Averaging OFF.
+HF_AVERAGES = None                # captures per tone; None = as many as the ESA it is measured with (ESA_AVERAGES of
+                                  # rin_measurement.py with FULL_SPAN_RIN, else TONE_AVERAGES)
+HF_WRITE_GUI_TXT = False          # also a GUI-layout .txt per tone (~6 MB each; everything is in the h5 anyway)
+HF_SAVE_CAPTURES = True           # every single capture in the h5 (float32, ~10 MB per tone)
 
 # --- full-span RIN per tone: the measurement as rin_measurement.py takes it (its ESA_SEGMENTS / ESA_AVERAGES) ---
 FULL_SPAN_RIN = True              # adds to the zoomed tone sweep, does not replace it
@@ -161,8 +157,38 @@ FULL_SPAN_REF_LEVEL_DBM = base_settings.ESA_REF_LEVEL_DBM   # the reference leve
 FULL_SPAN_TONE_HALF_WIDTH_RBW = 5  # tone integrated over +-this many RBW of the full-span trace it falls in
                                   # (noise next to it: HF_NOISE_HZ, the same frequencies as for the HighFinesse)
 
+# --- detectors: which one is on the ESA chain (PD -> bias tee -> EF500 -> ESA, DC port -> Keithley) and which on
+# the scope. Swap them by swapping the two names; everything else comes from DETECTORS. ---
+ESA_DETECTOR = 'HP11982A'
+SCOPE_DETECTOR = 'PDA05CF2'
+_PD_DIR = r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'
+DETECTORS = {
+    'PDA05CF2': dict(
+        pd_model='PDA05CF2_SM1FCA2',             # as in its characterization file name (fibre adapter included)
+        output_ohm=50.0,                         # Thevenin output resistance (data sheet 50 ohm: 10 kV/A Hi-Z, 5 kV/A 50 ohm)
+        max_hiz_V=10.0,                          # saturation into Hi-Z (data sheet)
+        tia_hiz_V_A=10e3,                        # transimpedance into Hi-Z (shot-noise line only)
+        cal_HiZ=_PD_DIR + r'\2026-10-16_16-37-30_PDA05CF2_SM1FCA2_1550nm_HiZ.h5',   # DET1 + SM1FCA2: 6.964 V/mW,
+                                                 # linear to 8.51 V. (DET2 + SM1FCA2: 2026-10-20_12-31-24, 2.34 V/mW)
+        cal_50ohm='',                            # none: on a 50 ohm scope input the Hi-Z one is scaled by 50 / (50 + R)
+        max_power_mW=1.2),                       # DET1 Hi-Z linear to 8.51 V = 1.22 mW; into 50 ohm max 5 V out
+    'HP11982A': dict(
+        pd_model='HP11982A_HiZ',                 # = dut name in its characterization files
+        output_ohm=1.0,                          # NOT 50 ohm: Hi-Z and 50 ohm characterizations give nearly the same V/mW
+                                                 # (same split): 0.9577 / 0.9294 V/mW (13:29 / 13:24) -> R = 1.5 ohm;
+                                                 # 1.0005 / 0.9938 V/mW (12:56 / 13:11) -> R = 0.3 ohm. A low-impedance
+                                                 # output: the ESA sees ~the full Voc (factor (51/50)^2, not 4).
+                                                 # +-0.6 ohm = +-0.1 dB on the ESA chain; measure directly for better
+        max_hiz_V=4.4,                           # clips at ~4.4-4.5 V into Hi-Z AND 50 ohm (voltage-limited output)
+        tia_hiz_V_A=None,                        # no TIA value -> no shot-noise line (RIN and tones are not affected)
+        cal_HiZ=_PD_DIR + r'\2026-10-20_13-29-02_HP11982A_HiZ_1550nm_HiZ.h5',       # 0.9577 V/mW, 1 % compression
+                                                 # at 4.6 mW (same split 0.9598 as the 50 ohm run 13:24)
+        cal_50ohm=_PD_DIR + r'\2026-10-20_13-24-42_HP11982A_50ohm_T_splitter+50ohm_termination_1550nm_50ohm.h5',
+        max_power_mW=4.0),                       # 1 % compression at 4.6-4.7 mW (both loads)
+}
+
 # --- scope: an independent detector (see the docstring) ---
-SCOPE_ENABLE = True 
+SCOPE_ENABLE = True
 SCOPE_IP = '192.168.1.52'         # Siglent SDS2352X-E
 SCOPE_AC_CH = 1                   # AC-coupled (SCOPE_AC_COUPLING): the tone
 SCOPE_AC_COUPLING = 'A50'         # 'A50' / 'D50' = 50 ohm input (terminates the cable: no 50 ohm x cable-C roll-off,
@@ -173,17 +199,10 @@ SCOPE_DC_CH = None                # None: the same channel, switched to SCOPE_DC
                                   # records. A channel number: a BNC T to that channel, read from the same acquisition
                                   # (with 50 ohm inputs a BNC T would load the detector twice: use None)
 SCOPE_SWITCH_SETTLE_S = 1.0       # wait after switching the coupling (AC coupling capacitor recharging)
-SCOPE_DETECTOR = 'HP11982A'            # name of the detector on the scope (saved, in the plot)
-SCOPE_PD_CAL = 'ask'              # characterization of the scope detector (Photodetector/photodetector_characterization.py)
-                                  # measured into the load of SCOPE_DC_COUPLING (*_50ohm.h5 for D50, *_HiZ.h5 for D1M):
-                                  # 'ask' = pop-up (Cancel = none), a path, or None. Its V/W gives the optical power on the
-                                  # detector at every tone (printed, saved) for the warning below. Not needed for
-                                  # m = V_tone / V_dc itself (a ratio, the gain cancels).
-SCOPE_PD_CAL_PRESELECT = (r'C:\Users\Group Login\Documents\Jeppe_Surrow\Photodetector'
-                          r'\2026-10-20_13-24-42_HP11982A_50ohm_T_splitter+50ohm_termination_1550nm_50ohm.h5')
-                                  # highlighted in that pop-up ('' = the newest file with the right load)
-SCOPE_MAX_POWER_MW = 3.5          # warn when the scope detector gets more than this, or more than the linear range of its
-                                  # characterization (HP11982A 2026-10-20: linear within 0.5 % to ~4.5 mW, clips at ~4.4 V)
+SCOPE_PD_CAL = 'ask'              # characterization of the scope detector (Photodetector/photodetector_characterization.py):
+                                  # 'ask' = pop-up with DETECTORS[SCOPE_DETECTOR] cal_50ohm / cal_HiZ highlighted (Cancel =
+                                  # none), a path, or None. Its V/W gives the optical power on the detector at every tone
+                                  # for the max_power_mW warning. Not needed for m = V_tone / V_dc itself (a ratio).
 SCOPE_MEMORY = '140K'
 SCOPE_NCYC = 200                  # record length >= this many tone periods
 SCOPE_NACQ = 3                    # records per tone (power-averaged)
@@ -211,7 +230,7 @@ V_PI = None                       # [V] half-wave voltage = V_max - V_min of the
 # --- ESA per tone ---
 MEASURE_BACKGROUND = True         # laser blocked once at the start: the same span around every tone (ESA + detector
                                   # floor, spurs) and the Keithley dark level; subtracted from the noise next to the tones
-ESA_REMEASURE_AFTER_HF = True     # measure the ESA tone again after the HighFinesse files: the mean of both is compared,
+ESA_REMEASURE_AFTER_HF = True     # measure the ESA tone again after the full span / HighFinesse: the mean of both is compared,
                                   # their difference (drift of the modulation depth during the tone, e.g. polarization
                                   # into the modulator or bias drift) is reported - it does NOT cancel between instruments
 DRIFT_WARN_DB = 0.2
@@ -230,10 +249,32 @@ HF_NOISE_HZ = (2000.0, 5000.0)    # HighFinesse: noise next to the tone
 
 
 # =============================================================================
+def apply_detectors(g):
+    """ESA_DETECTOR -> the first CHANNELS entry (a copy; rin_measurement.py is not changed)."""
+    dets = g['DETECTORS']
+    for key in ('ESA_DETECTOR', 'SCOPE_DETECTOR'):
+        if g[key] not in dets:
+            raise ValueError('%s = %r is not in DETECTORS (%s)' % (key, g[key], ', '.join(dets)))
+    if g['SCOPE_ENABLE'] and g['ESA_DETECTOR'] == g['SCOPE_DETECTOR']:
+        raise ValueError('ESA_DETECTOR and SCOPE_DETECTOR are the same detector (%s)' % g['ESA_DETECTOR'])
+    d = dets[g['ESA_DETECTOR']]
+    chans = [dict(c) for c in g['CHANNELS']]
+    if len(chans) > 1:
+        print('NOTE: ESA_DETECTOR %s is applied to the first channel only' % g['ESA_DETECTOR'])
+    chans[0].update(name=bt.safe_name(g['ESA_DETECTOR']) or chans[0].get('name', 'PD1'),
+                    pd_model=d['pd_model'], pd_output_ohm=float(d['output_ohm']), pd_max_hiz_V=float(d['max_hiz_V']),
+                    pd_cal='ask' if d.get('cal_HiZ') else None, pd_cal_preselect=d.get('cal_HiZ') or '',
+                    transimpedance_V_A=d.get('tia_hiz_V_A'), responsivity_A_W=None)
+    g['CHANNELS'] = chans
+    return g
+
+
 def build_cfg():
     g = {k: v for k, v in vars(base_settings).items() if k.isupper()}
     g.update({k: v for k, v in globals().items() if k.isupper()})       # the settings of this file win
     g['N_MEASUREMENTS'] = 1
+    g = apply_detectors(g)
+    g['HIGHFINESSE_SOURCE'] = 'python'                                  # this test reads the HighFinesse from Python only
     cfg = bt.config_from_globals(g)
     rin.validate_config(cfg)
     bad = [f for f in cfg.TONES_HZ if abs(f / 100.0 - round(f / 100.0)) > 1e-9 or f < 6e3 or f > 9.9e6]
@@ -244,8 +285,6 @@ def build_cfg():
     if cfg.SET_AM_BIAS and cfg.V_QUAD + cfg.DRIVE_VPP / 2 > cfg.MAX_DC_VOLT:
         raise ValueError('V_QUAD + DRIVE_VPP/2 = %.2f V exceeds MAX_DC_VOLT = %g V' % (cfg.V_QUAD + cfg.DRIVE_VPP / 2,
                                                                                     cfg.MAX_DC_VOLT))
-    if cfg.COMPARE_HIGHFINESSE and not (isinstance(cfg.HF_FILES_PER_TONE, int) and cfg.HF_FILES_PER_TONE >= 1):
-        raise ValueError('HF_FILES_PER_TONE must be an integer >= 1, got %r' % (cfg.HF_FILES_PER_TONE,))
     if cfg.SCOPE_ENABLE and cfg.SCOPE_AC_CH == cfg.SCOPE_DC_CH:
         raise ValueError('SCOPE_DC_CH must be another channel than SCOPE_AC_CH, or None (same channel, switched)')
     if not isinstance(cfg.FULL_SPAN_RIN, bool):
@@ -389,37 +428,60 @@ def coupling_text(code):
     return '%s %s' % ('AC' if c.startswith('A') else 'DC', '50 ohm' if c.endswith('50') else '1 Mohm')
 
 
+def _load_cal_for(path, load, output_ohm):
+    """A detector characterization for the given load. A Hi-Z one is accepted for a 50 ohm input and scaled by
+    50 / (50 + R) (the divider of the detector's output resistance R with the 50 ohm input)."""
+    with h5py.File(path, 'r') as h:
+        measured = str(h.attrs.get('load', '?')).replace(' ', '').replace('_', '').lower()
+    if load == '50ohm' and measured == 'hiz':
+        cal = rin.load_pd_cal(path, 'HiZ')
+        k = 50.0 / (50.0 + float(output_ohm))
+        cal['v_per_w'] *= k
+        cal['v_linear_max'] *= k
+        cal['pd_text'] = ('%s: %.4g V/mW into 50 ohm, linear to %.2f V (Hi-Z characterization %s x %.3f, R = %g ohm)'
+                          % (cal['pd_dut'], cal['v_per_w'] / 1e3, cal['v_linear_max'], os.path.basename(path), k,
+                             output_ohm))
+        cal['scaled_from_hiz'] = k
+        return cal
+    return rin.load_pd_cal(path, load)
+
+
 def load_scope_cal(cfg):
-    """SCOPE_PD_CAL -> characterization of the scope detector (rin_utils.load_pd_cal, measured into the load of
-    SCOPE_DC_COUPLING) with its warning limit added, or None."""
+    """SCOPE_PD_CAL -> characterization of the scope detector (measured into the load of SCOPE_DC_COUPLING, or a Hi-Z
+    one scaled to 50 ohm) with the max_power_mW warning limit of DETECTORS[SCOPE_DETECTOR] added, or None."""
+    det = cfg.DETECTORS[cfg.SCOPE_DETECTOR]
     load = '50ohm' if str(cfg.SCOPE_DC_COUPLING).upper().endswith('50') else 'HiZ'
+    max_mw = float(det['max_power_mW'])
+    preselect = det.get('cal_' + load) or ''
+    pattern = '*_%s.h5' % load
+    if not preselect and load == '50ohm' and det.get('cal_HiZ'):
+        preselect, pattern = det['cal_HiZ'], '*.h5'          # only a Hi-Z one: scaled to 50 ohm
     setting = cfg.SCOPE_PD_CAL
     if not setting:
-        print('Scope detector: no characterization (SCOPE_PD_CAL = None) - no optical power / no %g mW check'
-              % cfg.SCOPE_MAX_POWER_MW)
+        print('Scope detector: no characterization (SCOPE_PD_CAL = None) - no optical power / no %g mW check' % max_mw)
         return None
     cal = None
     for _ in range(3 if setting == 'ask' else 1):
         path = setting if setting != 'ask' else rin._ask_path(
-            'AM response: characterization of the scope detector %s, measured into %s (*_%s.h5) - Cancel = none'
-            % (cfg.SCOPE_DETECTOR, load, load), getattr(cfg, 'PD_CAL_FOLDER', ''), '*_%s.h5' % load,
-            getattr(cfg, 'SCOPE_PD_CAL_PRESELECT', ''))
+            'AM response: characterization of the scope detector %s for a %s input (%s) - Cancel = none'
+            % (cfg.SCOPE_DETECTOR, load, pattern), getattr(cfg, 'PD_CAL_FOLDER', ''), pattern, preselect)
         if not path:
             break
         try:
-            cal = rin.load_pd_cal(path, load)
+            cal = _load_cal_for(path, load, det['output_ohm'])
             break
         except Exception as e:
             if setting != 'ask':
                 raise
             print('Scope detector characterization: %s' % e)
     if cal is None:
-        print('Scope detector: no characterization chosen - no optical power / no %g mW check' % cfg.SCOPE_MAX_POWER_MW)
+        print('Scope detector: no characterization chosen - no optical power / no %g mW check' % max_mw)
         return None
-    if cfg.SCOPE_DETECTOR and not cal['pd_dut'].upper().startswith(str(cfg.SCOPE_DETECTOR).upper()):
-        print('WARNING: the scope detector characterization is for %s, SCOPE_DETECTOR is %s'
-              % (cal['pd_dut'], cfg.SCOPE_DETECTOR))
-    cal['max_power_W'] = cfg.SCOPE_MAX_POWER_MW * 1e-3
+    model = str(det.get('pd_model') or cfg.SCOPE_DETECTOR).upper()
+    if not (cal['pd_dut'].upper().startswith(model) or model.startswith(cal['pd_dut'].upper())):
+        print('WARNING: the scope detector characterization is for %s, SCOPE_DETECTOR is %s (%s)'
+              % (cal['pd_dut'], cfg.SCOPE_DETECTOR, det.get('pd_model')))
+    cal['max_power_W'] = max_mw * 1e-3
     cal['max_v_dc'] = min(cal['max_power_W'] * cal['v_per_w'], cal['v_linear_max'])     # whichever is lower
     print('Scope detector: %s\n  -> warning above %.2f V on the scope = %.2f mW on the detector'
           % (cal['pd_text'], cal['max_v_dc'], 1e3 * cal['max_v_dc'] / cal['v_per_w']))
@@ -596,7 +658,7 @@ def hf_captures_per_tone(cfg):
 
 
 def measure_full_span(R, cfg, f0, base):
-    """Full-span RIN sweeps (FULL_SPAN_RIN) with the HighFinesse read from Python at the same time ('python')
+    """Full-span RIN sweeps (FULL_SPAN_RIN) with the HighFinesse read from Python at the same time (COMPARE_HIGHFINESSE)
     -> (RinSetup.measure dict or None, HighFinesse dict as rin.hf_from_python or None)."""
     py = R.hf is not None
     laser = meas = None
@@ -615,25 +677,7 @@ def measure_full_span(R, cfg, f0, base):
     if py:
         meas = R.hf.join()
     hf = rin.hf_from_python(cfg, meas, '%s_%dHz' % (base, int(f0)), cfg.HF_WRITE_GUI_TXT) if meas else None
-    if hf:
-        hf['save_order'] = 1
     return laser, hf
-
-
-def collect_hf_files(cfg, f0, t_start, base):
-    """Ask for up to HF_FILES_PER_TONE HighFinesse files, each saved after the previous one -> list of parsed dicts.
-    Nothing is assumed about them: the Av count is read from each file's header, the order from the order of saving."""
-    out, t_prev = [], t_start
-    for k in range(cfg.HF_FILES_PER_TONE):
-        print('  HIGHFINESSE file %d of %d for %s (any Av count - it is read from the file): RESTART its averaging, wait '
-              'until it is complete, then save "raw data"' % (k + 1, cfg.HF_FILES_PER_TONE, rin._hz(f0)))
-        hf = rin.collect_highfinesse(cfg, t_prev, '%s_%dHz_hf%d' % (base, int(f0), k + 1))
-        if hf is None:                                       # 's' = no (more) HighFinesse files for this tone
-            break
-        hf['save_order'] = k + 1
-        t_prev = os.path.getmtime(hf['file'])               # the next file must be saved after this one
-        out.append(hf)
-    return out
 
 
 # =============================================================================
@@ -686,7 +730,7 @@ def analyse_esa(cfg, ch, s, f0, bg=None):
 
 
 def combine_esa(e1, e2):
-    """ESA before and after the HighFinesse files -> power mean of the levels + drift (after - before, dB)."""
+    """ESA zoom before and after the full span / HighFinesse -> power mean of the levels + drift (after - before, dB)."""
     if e2 is None:
         return dict(e1, drift_db=np.nan)
     out = dict(e1)
@@ -700,21 +744,17 @@ def combine_esa(e1, e2):
 
 
 def analyse_hf(cfg, hf, f0):
-    """Tone level (as exported) and the corrected noise next to it, from one HighFinesse RIN export."""
+    """Tone level and the noise next to it, from the power-averaged HighFinesse RIN (rin.hf_from_python)."""
     f, lin = hf['f'], 10 ** (hf['db'] / 10.0)
     df = float(np.median(np.diff(f)))
     d = np.abs(f - f0)
     near, side = d <= cfg.HF_TONE_HALF_WIDTH_HZ, (d >= cfg.HF_NOISE_HZ[0]) & (d <= cfg.HF_NOISE_HZ[1])
-    noise_raw = float(np.mean(lin[side]))
-    noise = noise_raw * 10 ** (hf.get('correction_db', 0.0) / 10.0)          # corrected for the dB averaging
+    noise = float(np.mean(lin[side]))
     tone = float(np.sum(lin[near] - noise) * df)
     k = int(np.argmax(np.where(near, lin, -np.inf)))
-    return {'source': hf.get('source', 'file'), 'tone_dbc': float(_db(tone)), 'f_peak_hz': float(f[k]),
-            'noise_dbc_hz': float(_db(noise)),
-            'noise_as_exported_dbc_hz': float(_db(noise_raw)), 'snr_db': float(_db(lin[k] / noise_raw)),
-            'av_count': hf.get('av_count') if hf.get('av_count') is not None else -1,
-            'correction_db': hf.get('correction_db', 0.0), 'save_order': hf.get('save_order', -1),
-            'file': os.path.basename(hf['file']), 'timestamp': hf['header'].get('Timestamp', '?')}
+    return {'tone_dbc': float(_db(tone)), 'f_peak_hz': float(f[k]), 'noise_dbc_hz': float(_db(noise)),
+            'snr_db': float(_db(lin[k] / noise)), 'n_captures': int(hf['n_captures']),
+            'timestamp': hf['header'].get('Timestamp', '?')}
 
 
 def analyse_full_span(cfg, ch, res, f0):
@@ -762,28 +802,20 @@ def bands_without_tone(c, f0, per_decade, n_bins=2):
     return out
 
 
-def tone_summary(f0, e, hfs, sc, exp_dbc, fs=None, fcmp=None):
-    """One tone of one ESA channel: ESA, every HighFinesse file, per-Av-count groups, all combined, scope, expected,
-    full-span RIN measurement (fs = analyse_full_span, fcmp = rin.compare_highfinesse of the whole span)."""
+def tone_summary(f0, e, h, sc, exp_dbc, fs=None, fcmp=None):
+    """One tone of one ESA channel: ESA zoom (e), HighFinesse (h = analyse_hf or None), scope, expected, full-span RIN
+    measurement (fs = analyse_full_span, fcmp = rin.compare_highfinesse of the whole span)."""
     nan = np.nan
     row = {'f': f0, 'v_dc': e['v_dc'], 'esa_peak': e['tone_peak_dbc'], 'esa_int': e['tone_int_dbc'],
            'esa_snr': e['snr_db'], 'esa_noise': e['noise_dbc_hz'], 'esa_floor': e['floor_dbc_hz'],
            'esa_drift': e['drift_db'],
            'm_esa': 100 * np.sqrt(2 * 10 ** (e['tone_peak_dbc'] / 10.0)),
-           'exp': exp_dbc if exp_dbc is not None else nan, 'groups': {}}
-    files = []
-    for h in hfs:
-        files.append(dict(h, f=f0, esa_peak=e['tone_peak_dbc'], esa_noise=e['noise_dbc_hz'],
-                          d_tone=e['tone_peak_dbc'] - h['tone_dbc'], d_noise=e['noise_dbc_hz'] - h['noise_dbc_hz']))
-    for n in sorted({h['av_count'] for h in hfs}):
-        grp = [h for h in hfs if h['av_count'] == n]
-        tone, noise = _power_mean_db([h['tone_dbc'] for h in grp]), _power_mean_db([h['noise_dbc_hz'] for h in grp])
-        row['groups'][n] = {'n_files': len(grp), 'hf_tone': tone, 'hf_noise': noise,
-                            'd_tone': row['esa_peak'] - tone, 'd_noise': row['esa_noise'] - noise,
-                            'source': grp[0].get('source', 'file')}
-    row['hf_tone'] = _power_mean_db([h['tone_dbc'] for h in hfs])
-    row['hf_noise'] = _power_mean_db([h['noise_dbc_hz'] for h in hfs])
-    row['n_hf_files'] = len(hfs)
+           'exp': exp_dbc if exp_dbc is not None else nan}
+    h = h or {}
+    row['hf_n'] = h.get('n_captures', 0)
+    row['hf_tone'] = h.get('tone_dbc', nan)
+    row['hf_snr'] = h.get('snr_db', nan)
+    row['hf_noise'] = h.get('noise_dbc_hz', nan)
     row['d_tone'] = row['esa_peak'] - row['hf_tone']
     row['d_tone_int'] = row['esa_int'] - row['hf_tone']
     row['d_noise'] = row['esa_noise'] - row['hf_noise']
@@ -804,7 +836,7 @@ def tone_summary(f0, e, hfs, sc, exp_dbc, fs=None, fcmp=None):
     row['d_full_tone'] = row['full_int'] - row['hf_tone']
     row['d_full_noise'] = row['full_noise'] - row['hf_noise']
     row['d_full_rin'] = fcmp['median_db'] if fcmp else nan
-    return row, files
+    return row
 
 
 BASE_COLUMNS = [
@@ -812,7 +844,7 @@ BASE_COLUMNS = [
     ('esa_tone_peak_dBc', 'esa_peak'), ('esa_tone_integrated_dBc', 'esa_int'), ('esa_snr_dB', 'esa_snr'),
     ('esa_noise_above_floor_dBc_Hz', 'esa_noise'), ('esa_floor_laser_blocked_dBc_Hz', 'esa_floor'),
     ('esa_drift_after_minus_before_dB', 'esa_drift'), ('esa_modulation_depth_pct', 'm_esa'),
-    ('hf_n_files', 'n_hf_files'), ('hf_tone_all_files_dBc', 'hf_tone'), ('hf_noise_all_files_corrected_dBc_Hz', 'hf_noise'),
+    ('hf_n_captures', 'hf_n'), ('hf_tone_dBc', 'hf_tone'), ('hf_snr_dB', 'hf_snr'), ('hf_noise_dBc_Hz', 'hf_noise'),
     ('esa_minus_hf_tone_dB', 'd_tone'), ('esa_integrated_minus_hf_tone_dB', 'd_tone_int'),
     ('esa_minus_hf_noise_dB', 'd_noise'),
     ('scope_tone_dBc', 'scope_tone'), ('scope_snr_dB', 'scope_snr'),
@@ -824,27 +856,10 @@ BASE_COLUMNS = [
     ('full_span_noise_above_floor_dBc_Hz', 'full_noise'), ('full_span_minus_zoom_tone_dB', 'd_full_zoom'),
     ('full_span_minus_hf_tone_dB', 'd_full_tone'), ('full_span_minus_hf_noise_dB', 'd_full_noise'),
     ('full_span_minus_hf_rin_median_all_bins_dB', 'd_full_rin')]
-GROUP_COLUMNS = [('hf_files_av%s', 'n_files'), ('hf_tone_av%s_dBc', 'hf_tone'),
-                 ('hf_noise_av%s_corrected_dBc_Hz', 'hf_noise'), ('esa_minus_hf_tone_av%s_dB', 'd_tone'),
-                 ('esa_minus_hf_noise_av%s_dB', 'd_noise')]
-FILE_COLUMNS = [('frequency_Hz', 'f'), ('source', 'source'), ('file', 'file'), ('hf_timestamp', 'timestamp'), ('av_count', 'av_count'),
-                ('save_order', 'save_order'), ('db_averaging_correction_dB', 'correction_db'),
-                ('hf_tone_dBc', 'tone_dbc'), ('hf_snr_dB', 'snr_db'), ('hf_noise_corrected_dBc_Hz', 'noise_dbc_hz'),
-                ('hf_noise_as_exported_dBc_Hz', 'noise_as_exported_dbc_hz'), ('esa_tone_peak_dBc', 'esa_peak'),
-                ('esa_noise_dBc_Hz', 'esa_noise'), ('esa_minus_hf_tone_dB', 'd_tone'), ('esa_minus_hf_noise_dB', 'd_noise')]
 
 
-def av_groups(rows):
-    return sorted({n for r in rows for n in r['groups']})
-
-
-def flat_row(r, groups):
-    out = {c: r[k] for c, k in BASE_COLUMNS}
-    for n in groups:
-        g = r['groups'].get(n)
-        for c, k in GROUP_COLUMNS:
-            out[c % n] = g[k] if g else (0 if k == 'n_files' else np.nan)
-    return out
+def flat_row(r):
+    return {c: r[k] for c, k in BASE_COLUMNS}
 
 
 # =============================================================================
@@ -867,9 +882,6 @@ def save_csv(path, rows):
     print('  Saved: %s' % path)
 
 
-_GROUP_MARK = ['s', 'D', 'v', 'P', '*']
-
-
 def make_plot(cfg, label, stamp, rows_by_ch, base_path, show):
     with plt.rc_context({'pdf.fonttype': 42, 'font.family': 'sans-serif', 'font.size': 9}):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 8.6), sharex=True, gridspec_kw={'height_ratios': [1.3, 1.9]})
@@ -885,19 +897,13 @@ def make_plot(cfg, label, stamp, rows_by_ch, base_path, show):
             if np.isfinite(get('full_int')).any():
                 ax1.plot(f, get('full_int'), 'h', color=c, ms=6, mfc='none',
                          label='%s ESA full span (integrated, as in a RIN measurement)' % name)
-            for j, n in enumerate(av_groups(rows)):
-                gv = lambda k: np.array([r['groups'][n][k] if n in r['groups'] else np.nan for r in rows], float)
-                py = any(r['groups'].get(n, {}).get('source') == 'python' for r in rows)
-                what = ('Python power average of %s' % n) if py else ('Av count %s' % n)
-                mk = _GROUP_MARK[j % len(_GROUP_MARK)]
+            if np.isfinite(get('hf_tone')).any():
                 if i == 0:
-                    ax1.plot(f, gv('hf_tone'), mk, color=hf_col, ms=5, mfc='none',
-                             label='HighFinesse, %s%s' % (what, '' if py else ' (as exported)'))
-                ax2.plot(f, gv('d_tone'), mk + '-', color=c, ms=5, lw=1.4, mfc='none' if j else c,
-                         label='%s zoom - HighFinesse, TONE, %s' % (name, what))
-                ax2.plot(f, gv('d_noise'), mk + ':', color=c, ms=4, lw=0.9, alpha=0.7,
-                         label='%s zoom - HighFinesse, NOISE next to the tone, %s%s'
-                               % (name, what, '' if py else ' (corrected)'))
+                    ax1.plot(f, get('hf_tone'), 's', color=hf_col, ms=5, mfc='none',
+                             label='HighFinesse (Python, power average of %d captures)' % int(np.nanmax(get('hf_n'))))
+                ax2.plot(f, get('d_tone'), 's-', color=c, ms=5, lw=1.4, label='%s zoom - HighFinesse, TONE' % name)
+                ax2.plot(f, get('d_noise'), 's:', color=c, ms=4, lw=0.9, alpha=0.7,
+                         label='%s zoom - HighFinesse, NOISE next to the tone' % name)
             if np.isfinite(get('d_full_tone')).any():
                 ax2.plot(f, get('d_full_tone'), 'h-', color=c, ms=5, lw=1.0, mfc='none',
                          label='%s full span - HighFinesse, TONE' % name)
@@ -910,7 +916,7 @@ def make_plot(cfg, label, stamp, rows_by_ch, base_path, show):
                              label='scope, %s (%s / %s)' % (cfg.SCOPE_DETECTOR, coupling_text(cfg.SCOPE_AC_COUPLING),
                                                             coupling_text(cfg.SCOPE_DC_COUPLING)))
                     ax2.plot(f, get('d_hf_scope'), 'v--', color=hf_col, ms=5, lw=1.2,
-                             label='HighFinesse - scope (TONE, all files)')
+                             label='HighFinesse - scope (TONE)')
                 ax2.plot(f, get('d_esa_scope'), '^--', color=c, ms=5, lw=1.2, label='%s ESA - scope (TONE)' % name)
             if np.isfinite(get('exp')).any():
                 ax2.plot(f, get('d_esa_exp'), '^:', color=c, ms=4, lw=1.0, label='%s ESA - expected (V_PI)' % name)
@@ -922,8 +928,7 @@ def make_plot(cfg, label, stamp, rows_by_ch, base_path, show):
         ax1.set_title('AM response   %s   %s\nsame sine intensity modulation on every arm, %g Vpp drive'
                       % (label, stamp, cfg.DRIVE_VPP), loc='left', color=bt.INK, fontsize=10)
         ax2.axhline(0, color=bt.AXIS, lw=0.9)
-        ax2.set_ylabel('Difference (dB)\n(tone: no dB-averaging correction;\nnoise: HighFinesse file corrected,\n'
-                       'Python capture: power-averaged)')
+        ax2.set_ylabel('Difference (dB)\n(all power-averaged,\nno dB-averaging correction)')
         ax2.set_xlabel('Frequency (Hz)')
         for ax in (ax1, ax2):
             ax.set_xscale('log')
@@ -967,7 +972,7 @@ def make_full_span_plot(cfg, label, stamp, tones, base_path, show):
             ax.set_xscale('log')
             bt._style_axes(ax)
             ax.legend(fontsize=6, frameon=False, labelcolor=bt.INK2, ncol=2)
-        hf0 = next((t['hf'][0] for t in tones if t['hf']), None)
+        hf0 = next((t['hf'] for t in tones if t['hf']), None)
         axes[0, 0].set_title('AM response   %s   %s\nfull-span RIN measurement (as rin_measurement.py) against the '
                              'HighFinesse, per tone\n%s' % (label, stamp, hf0['correction_text'] if hf0 else ''),
                              loc='left', color=bt.INK, fontsize=9)
@@ -986,13 +991,12 @@ def save_full_span_reports(cfg, label, stamp, tones, folder):
         title = '%s  tone %s' % (stamp, rin._hz(t['f']))
         cmp = t.get('full_cmp') or {}
         if t['hf'] and all(cmp.get(n) for n in t['full_res']):
-            rin.make_compare_report(cfg, label, title, t['full_res'], t['hf'][0], cmp, path + '_vs_highfinesse')
+            rin.make_compare_report(cfg, label, title, t['full_res'], t['hf'], cmp, path + '_vs_highfinesse')
         else:
             rin.make_rin_report(cfg, label, title, t['full_res'], path)
 
 
-def write_h5(path, cfg, R, scope, label, stamp, tones, rows_by_ch, files_by_ch, mod, log_idx, prompt_idx,
-             full_bg=None):
+def write_h5(path, cfg, R, scope, label, stamp, tones, rows_by_ch, mod, log_idx, prompt_idx, full_bg=None):
     ckw = dict(compression='gzip', compression_opts=6, shuffle=True)
     with h5py.File(path, 'w') as h:
         h.attrs['label'], h.attrs['created'] = label, stamp
@@ -1030,15 +1034,9 @@ def write_h5(path, cfg, R, scope, label, stamp, tones, rows_by_ch, files_by_ch, 
                     g.attrs['cal_' + k] = bt._attr(v)
             for k, v in ch.spec.items():
                 g.attrs['setting_' + k] = bt._attr(v)
-            rows = rows_by_ch[ch.name]
-            flat = [flat_row(r, av_groups(rows)) for r in rows]
+            flat = [flat_row(r) for r in rows_by_ch[ch.name]]
             for col in (flat[0] if flat else {}):
                 g.create_dataset('summary/' + col, data=[r[col] for r in flat])
-            for col, key in FILE_COLUMNS:
-                vals = [r[key] for r in files_by_ch[ch.name]]
-                g.create_dataset('highfinesse_files/' + col,
-                                 data=vals if not vals or not isinstance(vals[0], str) else np.array(vals, dtype=object),
-                                 dtype=h5py.string_dtype('utf-8') if vals and isinstance(vals[0], str) else None)
         for i, t in enumerate(tones):
             tg = h.create_group('tones/%02d_%dHz' % (i, int(round(t['f']))))
             tg.attrs['frequency_Hz'] = t['f']
@@ -1060,16 +1058,13 @@ def write_h5(path, cfg, R, scope, label, stamp, tones, rows_by_ch, files_by_ch, 
                         sg.attrs[cmd] = reply
                     for k, v in (results.get(name) or {}).items():
                         eg.attrs['result_' + k] = bt._attr(v)
-            for k, (hf, res) in enumerate(zip(t['hf'], t['hf_result'])):
-                hg = tg.create_group('highfinesse/hf%d' % (k + 1))
-                # spectrum, header, source, binned, file bytes / every Python capture; the full-span comparison is
-                # made with the first one (compared_<channel>)
-                rin._write_highfinesse(hg, cfg, hf, {n: c for n, c in (t.get('full_cmp') or {}).items() if c}
-                                       if k == 0 else {})
-                for n, c in ((t.get('full_cmp') or {}).items() if k == 0 else ()):
-                    if c:
-                        hg['compared_' + n].attrs['bands_without_tone_json'] = json.dumps(c.get('bands_without_tone', {}))
-                for kk, v in res.items():
+            if t['hf']:                                     # average, every capture, binned, full-span comparison
+                hg = tg.create_group('highfinesse')
+                cmps = {n: c for n, c in (t.get('full_cmp') or {}).items() if c}
+                rin._write_highfinesse(hg, cfg, t['hf'], cmps)
+                for n, c in cmps.items():
+                    hg['compared_' + n].attrs['bands_without_tone_json'] = json.dumps(c.get('bands_without_tone', {}))
+                for kk, v in t['hf_result'].items():
                     hg.attrs['result_' + kk] = bt._attr(v)
             for name, res in (t.get('full_res') or {}).items():  # full-span RIN measurement (FULL_SPAN_RIN)
                 fg = tg.create_group('full_span/%s' % name)
@@ -1103,15 +1098,19 @@ def main():
     cfg = build_cfg()
     exp_dbc, exp_m = expected_level_dbc(cfg)
     label = bt.safe_name(bt.ask_label(cfg.SAVE_FOLDER, cfg.DEFAULT_SAVE_LABEL, title='AM response test')) or 'unlabelled'
-    folder = rin.prepare_label_folder(cfg, label)  # label folder + its HighFinesse folder, before anything is measured
+    folder = rin.prepare_label_folder(cfg, label)
     stamp = pic.datetimestring()
     base = os.path.join(folder, stamp + '_am')
     print('Label: %s\nSaving in: %s\nTones: %s' % (label, folder, ', '.join(rin._hz(f) for f in cfg.TONES_HZ)))
-    if rin.hf_python_enabled(cfg):
+    d = cfg.DETECTORS[cfg.ESA_DETECTOR]
+    print('ESA chain : %s (output R = %g ohm -> ESA voltage x %.3f = open circuit, max %g V into Hi-Z)'
+          % (cfg.ESA_DETECTOR, d['output_ohm'], (float(cfg.ESA_INPUT_OHM) + d['output_ohm']) / float(cfg.ESA_INPUT_OHM),
+             d['max_hiz_V']))
+    if cfg.SCOPE_ENABLE:
+        print('Scope     : %s (warning above %g mW)' % (cfg.SCOPE_DETECTOR, cfg.DETECTORS[cfg.SCOPE_DETECTOR]['max_power_mW']))
+    if cfg.COMPARE_HIGHFINESSE:
         print('HighFinesse: read from Python, %d captures per tone, power-averaged%s'
               % (hf_captures_per_tone(cfg), ' (during the full-span sweep)' if cfg.FULL_SPAN_RIN else ''))
-    elif cfg.COMPARE_HIGHFINESSE:
-        print('HighFinesse: up to %d file(s) per tone (Av count read from each file)' % cfg.HF_FILES_PER_TONE)
     if cfg.FULL_SPAN_RIN:
         print('Full-span RIN per tone: %s, %d averages, reference level %g dBm'
               % ('  +  '.join('%s - %s RBW %s VBW %s' % (rin._hz(a), rin._hz(b), rin._hz(r), rin._hz(v))
@@ -1126,7 +1125,6 @@ def main():
     full_bg = None
     tones = []
     rows_by_ch = {ch.name: [] for ch in R.channels}
-    files_by_ch = {ch.name: [] for ch in R.channels}
     try:
         R.prepare_dc_monitors()
         R.confirm_dc_block()                       # ESA DC-coupled only after 'yes' (EF500 at the ESA input)
@@ -1145,9 +1143,8 @@ def main():
         for i, f0 in enumerate(cfg.TONES_HZ):
             print('\n----- tone %d of %d: %s -----' % (i + 1, len(cfg.TONES_HZ), rin._hz(f0)))
             mod.set_frequency(f0)
-            t_start = time.time()
-            t = {'f': f0, 'esa': measure_tone_esa(R, cfg, f0), 'esa_after': None, 'esa_result': {}, 'hf': [],
-                 'hf_result': [], 'scope': None, 'background': background.get(f0), 'full': None, 'full_res': {},
+            t = {'f': f0, 'esa': measure_tone_esa(R, cfg, f0), 'esa_after': None, 'esa_result': {}, 'hf': None,
+                 'hf_result': None, 'scope': None, 'background': background.get(f0), 'full': None, 'full_res': {},
                  'full_result': {}, 'full_cmp': {}}
             bg_of = lambda name: (t['background'] or {}).get(name)
             for ch in R.channels:
@@ -1160,6 +1157,10 @@ def main():
                     flag += '  <-- tone within 6 dB of the reference level'
                 if abs(e['f_peak_hz'] - f0) > 2 * cfg.TONE_RBW_HZ:
                     flag += '  <-- peak not at the tone frequency'
+                v_lim = min(0.9 * float(ch.spec['pd_max_hiz_V']), float((ch.cal or {}).get('v_linear_max', np.inf)))
+                if e['v_dc'] > v_lim:
+                    flag += ('  <-- Vdc above %.2f V (linear range / 90 %% of saturation of %s): lower the power on the '
+                             'ESA arm' % (v_lim, ch.spec['pd_model'] or ch.name))
                 print('  [%s] ESA: tone %.2f dBm  ->  %.2f dBc (peak), %.2f dBc (integrated), m = %.3f %%, '
                       'SNR %.0f dB, noise %.1f dBc/Hz%s, Vdc %.4f V%s'
                       % (ch.name, e['peak_dbm'], e['tone_peak_dbc'], e['tone_int_dbc'],
@@ -1179,28 +1180,17 @@ def main():
                     s['above_max_power'] = bool(s['v_dc'] > scope.cal['max_v_dc'])
                     power = ' (%.2f mW on the detector)' % (1e3 * s['p_detector_W'])
                     if s['above_max_power']:
-                        flag += ('  <-- ABOVE %.2f V = %.2f mW (SCOPE_MAX_POWER_MW / linear range): lower the power '
+                        flag += ('  <-- ABOVE %.2f V = %.2f mW (max_power_mW / linear range): lower the power '
                                  'on the scope arm' % (scope.cal['max_v_dc'], 1e3 * scope.cal['max_v_dc'] / scope.cal['v_per_w']))
                 print('  scope (%s): Vdc %.4f V%s, tone %.3f mV pk -> %.2f dBc, m = %.3f %%, SNR %.0f dB, %d codes pk-pk%s'
                       % (cfg.SCOPE_DETECTOR, s['v_dc'], power, 1e3 * s['vpk'], s['tone_dbc'], 100 * s['vpk'] / s['v_dc'],
                          s['snr_db'], s['pp_codes'], flag))
-            hf_py = None
             if cfg.FULL_SPAN_RIN or R.hf is not None:      # full-span RIN sweeps, HighFinesse from Python meanwhile
-                t['full'], hf_py = measure_full_span(R, cfg, f0, base)
-            if hf_py:
-                hf_list = [hf_py]
-            elif cfg.COMPARE_HIGHFINESSE and R.hf is None:
-                hf_list = collect_hf_files(cfg, f0, t_start, base)
-            else:
-                hf_list = []
-            for hf in hf_list:
-                h = analyse_hf(cfg, hf, f0)
-                t['hf'].append(hf)
-                t['hf_result'].append(h)
-                print('  HighFinesse %s -> tone %.2f dBc (SNR %.0f dB), noise %.1f dBc/Hz (corrected %+.2f dB)'
-                      % (('(Python, power average of %d)' % h['av_count']) if h['source'] == 'python' else
-                         ('%s: Av count %s' % (h['file'], h['av_count'])),
-                         h['tone_dbc'], h['snr_db'], h['noise_dbc_hz'], h['correction_db']))
+                t['full'], t['hf'] = measure_full_span(R, cfg, f0, base)
+            if t['hf']:
+                h = t['hf_result'] = analyse_hf(cfg, t['hf'], f0)
+                print('  HighFinesse (power average of %d) -> tone %.2f dBc (SNR %.0f dB), noise %.1f dBc/Hz'
+                      % (h['n_captures'], h['tone_dbc'], h['snr_db'], h['noise_dbc_hz']))
                 if abs(h['f_peak_hz'] - f0) > 100:
                     print('  WARNING: the HighFinesse peak is at %s, not at the tone' % rin._hz(h['f_peak_hz']))
             if t['full']:                                   # the full-span RIN as rin_measurement.py computes it
@@ -1208,7 +1198,7 @@ def main():
                     res = rin.compute_rin(cfg, ch.spec, ch.cal, t['full']['channels'][ch.name],
                                           full_bg['channels'].get(ch.name) if full_bg else None)
                     fs = analyse_full_span(cfg, ch, res, f0)
-                    fc = rin.compare_highfinesse(cfg, res, t['hf'][0]) if t['hf'] else None
+                    fc = rin.compare_highfinesse(cfg, res, t['hf']) if t['hf'] else None
                     t['full_res'][ch.name], t['full_result'][ch.name], t['full_cmp'][ch.name] = res, fs, fc
                     print('  [%s] full span (RBW %s): tone %.2f dBc (integrated), %.2f dBc (peak), noise %.1f dBc/Hz, '
                           'RIN %.3g %% rms%s' % (ch.name, rin._hz(fs['rbw_hz']), fs['tone_int_dbc'], fs['tone_peak_dbc'],
@@ -1217,10 +1207,8 @@ def main():
                                                  if fs['edge'] else ''))
                     if fc:
                         fc['bands_without_tone'] = bands_without_tone(fc, f0, cfg.BINS_PER_DECADE)
-                        print('  [%s] full span - HighFinesse%s, dB: %s   | median of %d bins: %+.2f'
-                              % (ch.name, '' if t['hf'][0].get('source') == 'python' else
-                                 ' (first file, NOT measured at the same time)',
-                                 '   '.join('%s: %+.2f' % kv for kv in fc['bands_without_tone'].items()),
+                        print('  [%s] full span - HighFinesse, dB: %s   | median of %d bins: %+.2f'
+                              % (ch.name, '   '.join('%s: %+.2f' % kv for kv in fc['bands_without_tone'].items()),
                                  fc['n_compared'], fc['median_db']))
             if cfg.ESA_REMEASURE_AFTER_HF and (t['hf'] or t['full']):
                 t['esa_after'] = measure_tone_esa(R, cfg, f0)
@@ -1233,17 +1221,15 @@ def main():
                           % (ch.name, e2['tone_peak_dbc'], e['drift_db'],
                              '  <-- the modulation depth changed during this tone' if abs(e['drift_db']) > cfg.DRIFT_WARN_DB
                              else ''))
-                r, files = tone_summary(f0, e, t['hf_result'], t['scope'], exp_dbc, t['full_result'].get(ch.name),
-                                        t['full_cmp'].get(ch.name))
+                r = tone_summary(f0, e, t['hf_result'], t['scope'], exp_dbc, t['full_result'].get(ch.name),
+                                 t['full_cmp'].get(ch.name))
                 rows_by_ch[ch.name].append(r)
-                files_by_ch[ch.name].extend(files)
-                parts = ['%s %s: tone %+.2f, noise %+.2f' % ('Python avg' if g['source'] == 'python' else 'Av', n,
-                                                              g['d_tone'], g['d_noise']) for n, g in r['groups'].items()]
+                parts = ['zoom: tone %+.2f, noise %+.2f' % (r['d_tone'], r['d_noise'])] if t['hf'] else []
                 if t['full']:
                     parts.append('full span: tone %+.2f, noise %+.2f, RIN median %+.2f'
                                  % (r['d_full_tone'], r['d_full_noise'], r['d_full_rin']))
                 print('  [%s] ESA - HighFinesse (dB): %s%s%s'
-                      % (ch.name, '   '.join(parts) or 'no HighFinesse file',
+                      % (ch.name, '   '.join(parts) or 'no HighFinesse',
                          ('   | ESA - scope %+.2f, HF - scope %+.2f' % (r['d_esa_scope'], r['d_hf_scope']))
                          if scope else '',
                          ('   | ESA - expected %+.2f' % r['d_esa_exp']) if exp_dbc is not None else ''))
@@ -1258,14 +1244,11 @@ def main():
         if tones:
             print('\nSaving ...')
             try:
-                write_h5(base + '_data.h5', cfg, R, scope, label, stamp, tones, rows_by_ch, files_by_ch, mod,
-                         log_idx, prompt_idx, full_bg)
+                write_h5(base + '_data.h5', cfg, R, scope, label, stamp, tones, rows_by_ch, mod, log_idx, prompt_idx,
+                         full_bg)
                 for name in rows_by_ch:
                     suffix = ('_' + name) if len(rows_by_ch) > 1 else ''
-                    rows = rows_by_ch[name]
-                    save_csv(base + '_summary%s.csv' % suffix, [flat_row(r, av_groups(rows)) for r in rows])
-                    save_csv(base + '_highfinesse_files%s.csv' % suffix,
-                             [{c: r[k] for c, k in FILE_COLUMNS} for r in files_by_ch[name]])
+                    save_csv(base + '_summary%s.csv' % suffix, [flat_row(r) for r in rows_by_ch[name]])
                 make_plot(cfg, label, stamp, rows_by_ch, base + '_response', cfg.SHOW_PLOTS)
                 if any(t.get('full_res') for t in tones):
                     make_full_span_plot(cfg, label, stamp, tones, base + '_full_span', cfg.SHOW_PLOTS)
